@@ -14,7 +14,8 @@
       "source": "./",
       "strict": false,
       "skills": [
-        "./skills/merge-stack"
+        "./skills/merge-stack",
+        "./skills/skill-review"
       ]
     }
   ]
