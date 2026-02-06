@@ -1,0 +1,21 @@
+{
+  "name": "rarestg-skills",
+  "owner": {
+    "name": "rarestg"
+  },
+  "metadata": {
+    "description": "Personal skills collection",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "rarestg-skills",
+      "description": "Personal skills for git workflows and developer productivity",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/merge-stack"
+      ]
+    }
+  ]
+}
