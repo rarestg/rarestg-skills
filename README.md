@@ -16,6 +16,7 @@ Personal collection of [Agent Skills](https://agentskills.io).
 | [merge-stack](skills/merge-stack/) | Merge a linear stack of GitHub PRs into main one by one |
 | [skill-review](skills/skill-review/) | Review a skill for quality, completeness, and correctness |
 | [coding-agent](skills/coding-agent/) | Orchestrate Codex CLI and Claude Code as background assistants via tmux |
+| [cf-browser](skills/cf-browser/) | Browse and scrape websites via Cloudflare Browser Rendering API |
 
 ---
 
