@@ -17,7 +17,8 @@
         "./skills/merge-stack",
         "./skills/skill-review",
         "./skills/coding-agent",
-        "./skills/cf-browser"
+        "./skills/cf-browser",
+        "./skills/code-quality"
       ]
     }
   ]

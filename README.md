@@ -17,6 +17,7 @@ Personal collection of [Agent Skills](https://agentskills.io).
 | [skill-review](skills/skill-review/) | Review a skill for quality, completeness, and correctness |
 | [coding-agent](skills/coding-agent/) | Orchestrate Codex CLI and Claude Code as background assistants via tmux |
 | [cf-browser](skills/cf-browser/) | Browse and scrape websites via Cloudflare Browser Rendering API |
+| [code-quality](skills/code-quality/) | Set up formatting, linting, type checking, and pre-commit hooks from day one |
 
 ---
 
