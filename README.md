@@ -19,6 +19,7 @@ Personal collection of [Agent Skills](https://agentskills.io).
 | [cf-browser](skills/cf-browser/) | Browse and scrape websites via Cloudflare Browser Rendering API |
 | [code-quality](skills/code-quality/) | Set up formatting, linting, type checking, and pre-commit hooks from day one |
 | [task-os](skills/task-os/) | Operating protocol using Taskwarrior as the continuity layer across conversations |
+| [install-skills](skills/install-skills/) | Install, discover, remove, and update agent skills via the npx skills CLI |
 
 ---
 

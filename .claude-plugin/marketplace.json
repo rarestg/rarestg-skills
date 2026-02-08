@@ -19,7 +19,8 @@
         "./skills/coding-agent",
         "./skills/cf-browser",
         "./skills/code-quality",
-        "./skills/task-os"
+        "./skills/task-os",
+        "./skills/install-skills"
       ]
     }
   ]
