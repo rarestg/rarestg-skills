@@ -18,6 +18,7 @@ Personal collection of [Agent Skills](https://agentskills.io).
 | [coding-agent](skills/coding-agent/) | Orchestrate Codex CLI and Claude Code as background assistants via tmux |
 | [cf-browser](skills/cf-browser/) | Browse and scrape websites via Cloudflare Browser Rendering API |
 | [code-quality](skills/code-quality/) | Set up formatting, linting, type checking, and pre-commit hooks from day one |
+| [task-os](skills/task-os/) | Operating protocol using Taskwarrior as the continuity layer across conversations |
 
 ---
 
