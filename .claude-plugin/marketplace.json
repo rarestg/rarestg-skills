@@ -20,7 +20,8 @@
         "./skills/cf-browser",
         "./skills/code-quality",
         "./skills/task-os",
-        "./skills/install-skills"
+        "./skills/install-skills",
+        "./skills/stacked-diffs"
       ]
     }
   ]

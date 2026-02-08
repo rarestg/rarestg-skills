@@ -20,6 +20,7 @@ Personal collection of [Agent Skills](https://agentskills.io).
 | [code-quality](skills/code-quality/) | Set up formatting, linting, type checking, and pre-commit hooks from day one |
 | [task-os](skills/task-os/) | Operating protocol using Taskwarrior as the continuity layer across conversations |
 | [install-skills](skills/install-skills/) | Install, discover, remove, and update agent skills via the npx skills CLI |
+| [stacked-diffs](skills/stacked-diffs/) | Break large changes into small, stacked PRs using vanilla git |
 
 ---
 
