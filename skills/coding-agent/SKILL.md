@@ -60,20 +60,25 @@ Progress streams to stderr, final result to stdout — enables piping: `codex ex
 | Flag                          | Effect                                     |
 | ----------------------------- | ------------------------------------------ |
 | `exec "prompt"`               | One-shot execution, exits when done        |
-| `--full-auto`                 | Shortcut: `--sandbox workspace-write` + auto-approve |
+| `--full-auto`                 | Shortcut: `-a on-request` + `--sandbox workspace-write` (auto-approves in `exec` mode) |
 | `--sandbox read-only`         | Read-only sandbox (default for `exec`). Also: `workspace-write`, `danger-full-access` |
-| `--yolo`                      | No sandbox, no approvals                   |
+| `--yolo`                      | No sandbox, no approvals (hidden alias for `--dangerously-bypass-approvals-and-sandbox`) |
 | `--model, -m`                 | Override model for this run                |
 | `--json`                      | JSONL stream of all events to stdout       |
-| `-o <path>`                   | Write final message to file (still prints to stdout) |
+| `-o <path>`                   | Write final message to file               |
 | `--output-schema <path>`      | JSON Schema file — validates final response shape |
 | `--image, -i <path>`          | Attach images to prompt (screenshots, diagrams). Repeatable |
 | `--add-dir <path>`            | Grant write access to additional directories. Repeatable |
 | `--skip-git-repo-check`       | Run outside a git repository               |
 | `exec resume <SESSION_ID>`    | Continue an exec session by ID (pass a follow-up prompt after the ID) |
+
+Top-level subcommands (not `exec` flags):
+
+| Subcommand                    | Effect                                     |
+| ----------------------------- | ------------------------------------------ |
 | `fork <SESSION_ID>`           | Branch an interactive session into a new thread |
 
-`--full-auto` vs `--yolo`: `--full-auto` runs in a `workspace-write` sandbox with auto-approval — safe for most building tasks. `--yolo` removes all guardrails. Prefer `--full-auto`; only use `--yolo` when the agent needs unrestricted system access (e.g., installing packages, modifying system files).
+`--full-auto` vs `--yolo`: `--full-auto` runs in a `workspace-write` sandbox with model-driven approval — safe for most building tasks. `--yolo` removes all guardrails (no sandbox, no approvals). Prefer `--full-auto`; only use `--yolo` when the agent needs unrestricted system access (e.g., installing packages, modifying system files).
 
 ```bash
 # One-shot
@@ -100,7 +105,7 @@ while [ "$(tmux display-message -t codex-review -p '#{pane_dead}')" != "1" ]; do
 SESSION_ID=$(tmux capture-pane -t codex-review -p -S - | grep "session id:" | awk '{print $NF}')
 tmux kill-session -t codex-review
 tmux new-session -d -s codex-review-2 -c ~/project \
-  "codex exec resume $SESSION_ID --full-auto 'Now fix the issues you found'" \; \
+  "codex exec resume --full-auto $SESSION_ID 'Now fix the issues you found'" \; \
   set remain-on-exit on
 
 # Monitor
@@ -170,7 +175,7 @@ tmux new-session -d -s claude-review -c ~/project \
   set remain-on-exit on
 # Wait, extract session ID and readable result, then resume:
 while [ "$(tmux display-message -t claude-review -p '#{pane_dead}')" != "1" ]; do sleep 1; done
-SESSION_ID=$(jq -r '.session_id' /tmp/claude-review.json)
+SESSION_ID=$(jq -r '.session_id' /tmp/claude-review.json)  # requires jq
 # Read the result: jq -r '.result' /tmp/claude-review.json
 tmux kill-session -t claude-review
 tmux new-session -d -s claude-review-2 -c ~/project \
