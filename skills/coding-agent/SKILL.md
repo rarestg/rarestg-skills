@@ -91,14 +91,14 @@ tmux new-session -d -s codex-task -c ~/project \
   "codex exec --full-auto --add-dir ../shared-lib 'Update the API client to use the new shared auth module'" \; \
   set remain-on-exit on
 
-# Multi-turn: capture session ID, then resume with follow-up
+# Multi-turn: extract session ID from pane, then resume with follow-up
 tmux new-session -d -s codex-review -c ~/project \
-  "codex exec --full-auto --json 'Review the auth module' > /tmp/codex-review.jsonl" \; \
+  "codex exec --full-auto 'Review the auth module'" \; \
   set remain-on-exit on
-# Wait for completion, extract session ID, then resume:
+# Wait, extract session ID from the pane header, then resume:
 while [ "$(tmux display-message -t codex-review -p '#{pane_dead}')" != "1" ]; do sleep 1; done
+SESSION_ID=$(tmux capture-pane -t codex-review -p -S - | grep "session id:" | awk '{print $NF}')
 tmux kill-session -t codex-review
-SESSION_ID=$(head -1 /tmp/codex-review.jsonl | jq -r '.thread_id')
 tmux new-session -d -s codex-review-2 -c ~/project \
   "codex exec resume $SESSION_ID --full-auto 'Now fix the issues you found'" \; \
   set remain-on-exit on
@@ -163,14 +163,16 @@ tmux new-session -d -s claude-task -c ~/project \
   "claude -p --append-system-prompt-file /tmp/instructions.md 'Process src/auth/'" \; \
   set remain-on-exit on
 
-# Multi-turn: capture session ID, then resume with follow-up
+# Multi-turn: capture session ID with --output-format json, then resume
+# (Claude doesn't print session ID in its pane output, so JSON redirect is needed)
 tmux new-session -d -s claude-review -c ~/project \
   "claude -p --output-format json 'Review the auth module' > /tmp/claude-review.json" \; \
   set remain-on-exit on
-# Wait for completion, extract session ID, then resume:
+# Wait, extract session ID and readable result, then resume:
 while [ "$(tmux display-message -t claude-review -p '#{pane_dead}')" != "1" ]; do sleep 1; done
-tmux kill-session -t claude-review
 SESSION_ID=$(jq -r '.session_id' /tmp/claude-review.json)
+# Read the result: jq -r '.result' /tmp/claude-review.json
+tmux kill-session -t claude-review
 tmux new-session -d -s claude-review-2 -c ~/project \
   "claude -p --resume $SESSION_ID 'Now fix the issues you found'" \; \
   set remain-on-exit on
