@@ -3,13 +3,12 @@ name: coding-agent
 description: >-
   Orchestrate Codex CLI and Claude Code as background assistants via tmux.
   Think of them as your team — delegate freely. Use when you want to: get a
-  review or second opinion on your work; delegate research or context-heavy
-  tasks; fan out work in parallel (map-reduce across agents); run the same
-  instruction across many items; review PRs or fix issues in parallel with
-  worktrees; or build something end-to-end (research → plan → phased
-  implementation → review). Triggers on: "run codex", "use claude on",
-  "spawn an agent", "second opinion", "delegate", "fan out", "review my
-  work", "build with agents".
+  second opinion on your work; delegate research or context-heavy tasks; fan
+  out work in parallel (map-reduce across agents); run the same instruction
+  across many items; fix issues in parallel with worktrees; or build
+  something end-to-end (research → plan → phased implementation → review).
+  Triggers on: "run codex", "use claude on", "spawn an agent", "second
+  opinion", "delegate", "fan out", "review my work", "build with agents".
 disable-model-invocation: true
 allowed-tools: Bash, Read
 argument-hint: "<task description>"
@@ -60,9 +59,10 @@ Progress streams to stderr, final result to stdout — enables piping: `codex ex
 | `--image, -i <path>`          | Attach images to prompt (screenshots, diagrams). Repeatable |
 | `--add-dir <path>`            | Grant write access to additional directories. Repeatable |
 | `--skip-git-repo-check`       | Run outside a git repository               |
-| `resume --last`               | Continue most recent session (`--all` to search across directories) |
-| `resume <SESSION_ID>`         | Continue a specific session                |
-| `fork <SESSION_ID>`           | Branch a session into a new thread         |
+| `exec resume --last`          | Continue most recent exec session (`--all` to search across directories) |
+| `exec resume <SESSION_ID>`    | Continue a specific exec session            |
+| `resume --last`               | Continue most recent interactive session    |
+| `fork <SESSION_ID>`           | Branch an interactive session into a new thread |
 
 `--full-auto` vs `--yolo`: `--full-auto` runs in a `workspace-write` sandbox with auto-approval — safe for most building tasks. `--yolo` removes all guardrails. Prefer `--full-auto`; only use `--yolo` when the agent needs unrestricted system access (e.g., installing packages, modifying system files).
 
@@ -110,7 +110,6 @@ tmux capture-pane -t codex-task -p -S -
 | `--resume SESSION_ID`              | Continue a specific conversation   |
 | `-c`                                | Continue most recent conversation  |
 | `--no-session-persistence`          | Don't save session to disk (for throwaway agents) |
-| `--fallback-model sonnet`           | Auto-fallback when primary model is overloaded |
 
 **Variadic flag gotcha:** `--allowedTools` and `--tools` are variadic — they consume all following positional arguments, including the prompt. When using them, place `--` before the prompt to terminate option parsing:
 
@@ -225,38 +224,6 @@ tmux new-session -d -s final-review -c ~/project \
 
 Wait for each step to complete before starting the next. Use `tmux display-message -t NAME -p '#{pane_dead}'` to poll, and `tmux capture-pane -t NAME -p -S -` to read results.
 
-## PR Review
-
-Review PRs in an isolated directory — never in the live project checkout.
-
-```bash
-# Clone and checkout PR, then launch review
-REVIEW_DIR=$(mktemp -d) && \
-  git clone https://github.com/user/repo.git "$REVIEW_DIR" && \
-  git -C "$REVIEW_DIR" checkout pr-130-branch
-
-tmux new-session -d -s pr-130 -c "$REVIEW_DIR" \
-  "codex review --base origin/main" \; \
-  set remain-on-exit on
-```
-
-### Batch PR Review
-
-```bash
-git fetch origin '+refs/pull/*/head:refs/remotes/origin/pr/*'
-
-# One agent per PR
-tmux new-session -d -s pr-86 -c ~/project \
-  "codex review --base origin/main origin/pr/86" \; \
-  set remain-on-exit on
-tmux new-session -d -s pr-87 -c ~/project \
-  "codex review --base origin/main origin/pr/87" \; \
-  set remain-on-exit on
-
-# Monitor: tmux list-sessions
-# Post results: gh pr comment 86 --body "<review>"
-```
-
 ## Parallel Issue Fixing
 
 Use git worktrees to fix multiple issues concurrently:
@@ -268,10 +235,10 @@ git worktree add -b fix/issue-99 /tmp/issue-99 main
 # --yolo here because pnpm install needs system writes outside the workspace sandbox.
 # Use --full-auto when the task only needs workspace writes.
 tmux new-session -d -s fix-78 -c /tmp/issue-78 \
-  "pnpm install && codex --yolo 'Fix issue #78: <desc>. Commit and push.'" \; \
+  "pnpm install && codex exec --yolo 'Fix issue #78: <desc>. Commit and push.'" \; \
   set remain-on-exit on
 tmux new-session -d -s fix-99 -c /tmp/issue-99 \
-  "pnpm install && codex --yolo 'Fix issue #99: <desc>. Commit and push.'" \; \
+  "pnpm install && codex exec --yolo 'Fix issue #99: <desc>. Commit and push.'" \; \
   set remain-on-exit on
 
 # After completion: push branches, create PRs, remove worktrees
