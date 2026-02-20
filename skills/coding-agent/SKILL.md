@@ -30,11 +30,19 @@ Use `remain-on-exit on` so the pane persists after the process exits — output 
 | Read output  | `tmux capture-pane -t NAME -p -S -` (full scrollback)   |
 | Check status | `tmux display-message -t NAME -p '#{pane_dead}'` → `1` if exited |
 | Exit code    | `tmux display-message -t NAME -p '#{pane_dead_status}'` |
-| Send input   | `tmux send-keys -t NAME "text" Enter`                   |
+| Send input   | `tmux send-keys -t NAME "text" && sleep 0.5 && tmux send-keys -t NAME Enter` |
 | Send raw     | `tmux send-keys -t NAME "y"` (no Enter)                 |
 | Send Ctrl-C  | `tmux send-keys -t NAME C-c`                            |
 | Kill         | `tmux kill-session -t NAME`                              |
 | List all     | `tmux list-sessions`                                     |
+
+**TUI input gotcha (codex interactive):** Codex's interactive TUI renders input asynchronously. If you send text and Enter in the same `send-keys` call (`send-keys "text" Enter`), the Enter often fires before the TUI has finished processing the text, and the prompt doesn't submit. The reliable pattern is to send the text first *without* Enter, give the TUI a beat to render, then send Enter separately:
+
+```bash
+tmux send-keys -t NAME "your prompt" && sleep 0.5 && tmux send-keys -t NAME Enter
+```
+
+This does not apply to `codex exec` (one-shot, non-interactive) or `claude -p` (print mode) — those take the prompt as a CLI argument and don't use a TUI.
 
 Use descriptive session names: `codex-auth-refactor`, `claude-fix-78`. Kill sessions after capturing output to avoid sprawl.
 
@@ -82,11 +90,20 @@ tmux new-session -d -s codex-task -c ~/project \
   "codex exec --full-auto --add-dir ../shared-lib 'Update the API client to use the new shared auth module'" \; \
   set remain-on-exit on
 
-# Multi-turn: run then resume
+# Multi-turn (exec + resume): one-shot, then continue non-interactively
 tmux new-session -d -s codex-review -c ~/project \
   "codex exec 'Review the auth module'" \; \
   set remain-on-exit on
 # Later: codex exec resume --last "Now fix the issues you found"
+
+# Multi-turn (interactive): keep an interactive session open and send follow-ups
+tmux new-session -d -s codex-chat -c ~/project \
+  "codex --full-auto" \; \
+  set remain-on-exit on
+# Send prompts — text first, sleep, then Enter:
+tmux send-keys -t codex-chat "Review the auth module" && sleep 0.5 && tmux send-keys -t codex-chat Enter
+# Wait for completion, then send follow-up:
+tmux send-keys -t codex-chat "Now fix the issues you found" && sleep 0.5 && tmux send-keys -t codex-chat Enter
 
 # Monitor
 tmux capture-pane -t codex-task -p -S -
