@@ -66,6 +66,8 @@ while tmux capture-pane -t NAME -p -S - | grep -q "esc to interrupt"; do sleep 0
 # Now read: tmux capture-pane -t NAME -p -S -
 ```
 
+> **Note:** The `esc to interrupt` marker is based on Codex CLI v0.104. If a future version changes this text, check `tmux capture-pane -t NAME -p -S -` while codex is processing to find the new indicator, and update the grep pattern accordingly.
+
 ## Codex CLI
 
 Default model is configured in `~/.codex/config.toml`. **Requires a git repository** — use `--skip-git-repo-check` to override, or `DIR=$(mktemp -d) && git -C "$DIR" init` for scratch work.
