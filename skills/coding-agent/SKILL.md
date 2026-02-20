@@ -9,7 +9,6 @@ description: >-
   something end-to-end (research → plan → phased implementation → review).
   Triggers on: "run codex", "use claude on", "spawn an agent", "second
   opinion", "delegate", "fan out", "review my work", "build with agents".
-disable-model-invocation: true
 allowed-tools: Bash, Read
 argument-hint: "<task description>"
 ---
