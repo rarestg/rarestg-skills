@@ -41,7 +41,7 @@ Use descriptive session names: `codex-auth-refactor`, `claude-fix-78`. Kill sess
 
 ## Codex CLI
 
-Default model: `gpt-5.2-codex` (configured in ~/.codex/config.toml). **Requires a git repository** — use `--skip-git-repo-check` to override, or `DIR=$(mktemp -d) && git -C "$DIR" init` for scratch work.
+Default model is configured in `~/.codex/config.toml`. **Requires a git repository** — use `--skip-git-repo-check` to override, or `DIR=$(mktemp -d) && git -C "$DIR" init` for scratch work.
 
 Progress streams to stderr, final result to stdout — enables piping: `codex exec "..." | tee result.md`. Use `-` to pipe prompt from stdin: `cat spec.md | codex exec -`.
 
@@ -99,12 +99,10 @@ tmux capture-pane -t codex-task -p -S -
 | Flag                                | Effect                             |
 | ----------------------------------- | ---------------------------------- |
 | `-p "prompt"`                       | Print mode — non-interactive, exits when done |
-| `--allowedTools "Bash,Read,Edit"`   | Auto-approve specific tools without prompting (prefix matching: `Bash(git diff *)`) |
-| `--tools "Bash,Read,Edit"`          | Restrict which tools are *available* (agent cannot use unlisted tools at all) |
+| `--allowedTools Bash Read Edit`     | Auto-approve specific tools without prompting (prefix matching: `Bash(git:*)`) |
+| `--tools Bash Read Edit`            | Restrict which tools are *available* (agent cannot use unlisted tools at all) |
 | `--dangerously-skip-permissions`    | Auto-approve all tool use (use with caution) |
 | `--model sonnet`                    | Set model (`haiku` for cheap tasks, `opus` for complex ones, `sonnet` default) |
-| `--max-turns N`                     | Limit agentic turns                |
-| `--max-budget-usd N`               | Cost cap in dollars — prevents runaway spending on background agents |
 | `--output-format json`              | Structured output with session ID and metadata (`text`, `json`, `stream-json`) |
 | `--append-system-prompt "..."`      | Add instructions while keeping default behavior |
 | `--append-system-prompt-file path`  | Same, but load from file — ideal for batch patterns (write once, reuse per agent) |
@@ -114,7 +112,20 @@ tmux capture-pane -t codex-task -p -S -
 | `--no-session-persistence`          | Don't save session to disk (for throwaway agents) |
 | `--fallback-model sonnet`           | Auto-fallback when primary model is overloaded |
 
-`--allowedTools` vs `--tools`: `--tools` controls what's *available*. `--allowedTools` controls what's *auto-approved*. Use both for tight scoping: `--tools "Bash,Read" --allowedTools "Read"` makes Bash available but still prompts, while Read is auto-approved.
+**Variadic flag gotcha:** `--allowedTools` and `--tools` are variadic — they consume all following positional arguments, including the prompt. When using them, place `--` before the prompt to terminate option parsing:
+
+```bash
+# WRONG — prompt gets swallowed as a tool name:
+claude -p --allowedTools Bash Read Edit "Fix the bug"
+
+# RIGHT — use -- to separate flags from the prompt:
+claude -p --allowedTools Bash Read Edit -- "Fix the bug"
+
+# ALSO RIGHT — pipe prompt via stdin:
+echo "Fix the bug" | claude -p --allowedTools Bash Read Edit
+```
+
+`--allowedTools` vs `--tools`: `--tools` controls what's *available*. `--allowedTools` controls what's *auto-approved*. Use both for tight scoping: `--tools Bash Read --allowedTools Read` makes Bash available but still prompts, while Read is auto-approved.
 
 Stdin is piped as context: `gh pr diff 130 | claude -p "Review this diff"`.
 
@@ -124,14 +135,19 @@ tmux new-session -d -s claude-task -c ~/project \
   "claude -p 'Refactor the auth module'" \; \
   set remain-on-exit on
 
-# Cheap research with haiku + cost cap
+# Research with haiku
 tmux new-session -d -s claude-research -c ~/project \
-  "claude -p --model haiku --max-budget-usd 0.50 'Summarize how auth works in this codebase'" \; \
+  "claude -p --model haiku 'Summarize how auth works in this codebase'" \; \
+  set remain-on-exit on
+
+# With allowedTools — note the -- before the prompt
+tmux new-session -d -s claude-task -c ~/project \
+  "claude -p --allowedTools Bash Read Edit -- 'Process src/auth/'" \; \
   set remain-on-exit on
 
 # Batch pattern: instructions from file
 tmux new-session -d -s claude-task -c ~/project \
-  "claude -p --allowedTools 'Bash,Read,Edit' --append-system-prompt-file /tmp/instructions.md 'Process src/auth/'" \; \
+  "claude -p --append-system-prompt-file /tmp/instructions.md 'Process src/auth/'" \; \
   set remain-on-exit on
 
 # Multi-turn: capture session ID, then resume
@@ -165,7 +181,7 @@ Feed the research to an agent tasked with producing a concrete plan and spec doc
 
 ```bash
 tmux new-session -d -s plan -c ~/project \
-  "claude -p --allowedTools 'Read,Write' 'Read /tmp/research.md. Create a detailed implementation plan and spec at /tmp/plan.md. Include phases, file changes per phase, and acceptance criteria.'" \; \
+  "claude -p --allowedTools Read Write -- 'Read /tmp/research.md. Create a detailed implementation plan and spec at /tmp/plan.md. Include phases, file changes per phase, and acceptance criteria.'" \; \
   set remain-on-exit on
 ```
 
@@ -175,7 +191,7 @@ Spawn a review agent (or use `resume` for a conversation) to challenge the plan,
 
 ```bash
 tmux new-session -d -s plan-review -c ~/project \
-  "claude -p --allowedTools 'Read,Write' 'Read /tmp/plan.md. Review it critically: are there gaps, risks, or missing edge cases? Update the plan with your suggestions.'" \; \
+  "claude -p --allowedTools Read Write -- 'Read /tmp/plan.md. Review it critically: are there gaps, risks, or missing edge cases? Update the plan with your suggestions.'" \; \
   set remain-on-exit on
 ```
 
@@ -191,7 +207,7 @@ tmux new-session -d -s phase-1-impl -c ~/project \
 
 # Phase 1: review & fix
 tmux new-session -d -s phase-1-review -c ~/project \
-  "claude -p --allowedTools 'Bash,Read,Edit' 'Read /tmp/plan.md. Review the Phase 1 implementation against the spec. Fix any issues. Commit when done.'" \; \
+  "claude -p --allowedTools Bash Read Edit -- 'Read /tmp/plan.md. Review the Phase 1 implementation against the spec. Fix any issues. Commit when done.'" \; \
   set remain-on-exit on
 
 # Repeat for Phase 2, 3, ...
@@ -203,7 +219,7 @@ Once all phases are complete, spawn a final agent to review the full implementat
 
 ```bash
 tmux new-session -d -s final-review -c ~/project \
-  "claude -p --allowedTools 'Bash,Read' 'Read /tmp/plan.md. Review the full implementation against this spec. Report what was completed, what diverged, and any remaining issues.'" \; \
+  "claude -p --allowedTools Bash Read -- 'Read /tmp/plan.md. Review the full implementation against this spec. Report what was completed, what diverged, and any remaining issues.'" \; \
   set remain-on-exit on
 ```
 
