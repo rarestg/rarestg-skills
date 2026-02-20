@@ -46,6 +46,26 @@ This does not apply to `codex exec` (one-shot, non-interactive) or `claude -p` (
 
 Use descriptive session names: `codex-auth-refactor`, `claude-fix-78`. Kill sessions after capturing output to avoid sprawl.
 
+### Waiting for completion
+
+**One-shot sessions** (`codex exec`, `claude -p`): the process exits when done, so poll `pane_dead`:
+
+```bash
+while [ "$(tmux display-message -t NAME -p '#{pane_dead}')" != "1" ]; do sleep 1; done
+# Now read: tmux capture-pane -t NAME -p -S -
+# Exit code: tmux display-message -t NAME -p '#{pane_dead_status}'
+```
+
+**Interactive codex sessions**: the process stays alive between turns. Codex shows `esc to interrupt` while processing a prompt, which disappears when it's done. Poll for that:
+
+```bash
+# Wait for processing to start
+while ! tmux capture-pane -t NAME -p -S - | grep -q "esc to interrupt"; do sleep 0.2; done
+# Wait for processing to finish
+while tmux capture-pane -t NAME -p -S - | grep -q "esc to interrupt"; do sleep 0.5; done
+# Now read: tmux capture-pane -t NAME -p -S -
+```
+
 ## Codex CLI
 
 Default model is configured in `~/.codex/config.toml`. **Requires a git repository** — use `--skip-git-repo-check` to override, or `DIR=$(mktemp -d) && git -C "$DIR" init` for scratch work.
@@ -100,9 +120,12 @@ tmux new-session -d -s codex-review -c ~/project \
 tmux new-session -d -s codex-chat -c ~/project \
   "codex --full-auto" \; \
   set remain-on-exit on
-# Send prompts — text first, sleep, then Enter:
+# Send first prompt:
 tmux send-keys -t codex-chat "Review the auth module" && sleep 0.5 && tmux send-keys -t codex-chat Enter
-# Wait for completion, then send follow-up:
+# Wait for it to finish (see "Waiting for completion" above):
+while ! tmux capture-pane -t codex-chat -p -S - | grep -q "esc to interrupt"; do sleep 0.2; done
+while tmux capture-pane -t codex-chat -p -S - | grep -q "esc to interrupt"; do sleep 0.5; done
+# Send follow-up:
 tmux send-keys -t codex-chat "Now fix the issues you found" && sleep 0.5 && tmux send-keys -t codex-chat Enter
 
 # Monitor
@@ -239,7 +262,7 @@ tmux new-session -d -s final-review -c ~/project \
   set remain-on-exit on
 ```
 
-Wait for each step to complete before starting the next. Use `tmux display-message -t NAME -p '#{pane_dead}'` to poll, and `tmux capture-pane -t NAME -p -S -` to read results.
+Wait for each step to complete before starting the next (see "Waiting for completion" above). Read results with `tmux capture-pane -t NAME -p -S -`.
 
 ## Parallel Issue Fixing
 
