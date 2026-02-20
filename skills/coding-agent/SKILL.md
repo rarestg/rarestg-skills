@@ -47,7 +47,7 @@ while [ "$(tmux display-message -t NAME -p '#{pane_dead}')" != "1" ]; do sleep 1
 # Exit code: tmux display-message -t NAME -p '#{pane_dead_status}'
 ```
 
-For multi-turn conversations, prefer `exec resume` over keeping an interactive TUI session alive — each turn is a clean one-shot process, so the same `pane_dead` polling works every time (see multi-turn examples below).
+For multi-turn conversations, prefer `resume` with an explicit session ID over keeping an interactive TUI session alive — each turn is a clean one-shot process, so the same `pane_dead` polling works every time. **Always pass the session ID explicitly** (`exec resume <ID>`, `--resume <ID>`) rather than using `--last` or `-c`, which can pick the wrong session when multiple agents run in parallel. See multi-turn examples below for how to capture and reuse the session ID.
 
 ## Codex CLI
 
@@ -70,9 +70,7 @@ Progress streams to stderr, final result to stdout — enables piping: `codex ex
 | `--image, -i <path>`          | Attach images to prompt (screenshots, diagrams). Repeatable |
 | `--add-dir <path>`            | Grant write access to additional directories. Repeatable |
 | `--skip-git-repo-check`       | Run outside a git repository               |
-| `exec resume --last`          | Continue most recent exec session (`--all` to search across directories) |
-| `exec resume <SESSION_ID>`    | Continue a specific exec session            |
-| `resume --last`               | Continue most recent interactive session    |
+| `exec resume <SESSION_ID>`    | Continue an exec session by ID (pass a follow-up prompt after the ID) |
 | `fork <SESSION_ID>`           | Branch an interactive session into a new thread |
 
 `--full-auto` vs `--yolo`: `--full-auto` runs in a `workspace-write` sandbox with auto-approval — safe for most building tasks. `--yolo` removes all guardrails. Prefer `--full-auto`; only use `--yolo` when the agent needs unrestricted system access (e.g., installing packages, modifying system files).
@@ -93,16 +91,16 @@ tmux new-session -d -s codex-task -c ~/project \
   "codex exec --full-auto --add-dir ../shared-lib 'Update the API client to use the new shared auth module'" \; \
   set remain-on-exit on
 
-# Multi-turn: first turn with exec, then resume with follow-up
+# Multi-turn: capture session ID, then resume with follow-up
 tmux new-session -d -s codex-review -c ~/project \
-  "codex exec --full-auto 'Review the auth module'" \; \
+  "codex exec --full-auto --json 'Review the auth module' > /tmp/codex-review.jsonl" \; \
   set remain-on-exit on
-# Wait for completion, then kill the session
+# Wait for completion, extract session ID, then resume:
 while [ "$(tmux display-message -t codex-review -p '#{pane_dead}')" != "1" ]; do sleep 1; done
 tmux kill-session -t codex-review
-# Resume with a follow-up prompt (starts a new one-shot process):
+SESSION_ID=$(head -1 /tmp/codex-review.jsonl | jq -r '.thread_id')
 tmux new-session -d -s codex-review-2 -c ~/project \
-  "codex exec resume --last --full-auto 'Now fix the issues you found'" \; \
+  "codex exec resume $SESSION_ID --full-auto 'Now fix the issues you found'" \; \
   set remain-on-exit on
 
 # Monitor
@@ -124,8 +122,7 @@ tmux capture-pane -t codex-task -p -S -
 | `--append-system-prompt "..."`      | Add instructions while keeping default behavior |
 | `--append-system-prompt-file path`  | Same, but load from file — ideal for batch patterns (write once, reuse per agent) |
 | `--add-dir ../other-project`        | Add extra directories to agent's context |
-| `--resume SESSION_ID`              | Continue a specific conversation   |
-| `-c`                                | Continue most recent conversation  |
+| `--resume SESSION_ID`              | Continue a specific conversation by ID |
 | `--no-session-persistence`          | Don't save session to disk (for throwaway agents) |
 
 **Variadic flag gotcha:** `--allowedTools` and `--tools` are variadic — they consume all following positional arguments, including the prompt. When using them, place `--` before the prompt to terminate option parsing:
