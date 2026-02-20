@@ -30,25 +30,16 @@ Use `remain-on-exit on` so the pane persists after the process exits — output 
 | Read output  | `tmux capture-pane -t NAME -p -S -` (full scrollback)   |
 | Check status | `tmux display-message -t NAME -p '#{pane_dead}'` → `1` if exited |
 | Exit code    | `tmux display-message -t NAME -p '#{pane_dead_status}'` |
-| Send input   | `tmux send-keys -t NAME "text" && sleep 0.5 && tmux send-keys -t NAME Enter` |
 | Send raw     | `tmux send-keys -t NAME "y"` (no Enter)                 |
 | Send Ctrl-C  | `tmux send-keys -t NAME C-c`                            |
 | Kill         | `tmux kill-session -t NAME`                              |
 | List all     | `tmux list-sessions`                                     |
 
-**TUI input gotcha (codex interactive):** Codex's interactive TUI renders input asynchronously. If you send text and Enter in the same `send-keys` call (`send-keys "text" Enter`), the Enter often fires before the TUI has finished processing the text, and the prompt doesn't submit. The reliable pattern is to send the text first *without* Enter, give the TUI a beat to render, then send Enter separately:
-
-```bash
-tmux send-keys -t NAME "your prompt" && sleep 0.5 && tmux send-keys -t NAME Enter
-```
-
-This does not apply to `codex exec` (one-shot, non-interactive) or `claude -p` (print mode) — those take the prompt as a CLI argument and don't use a TUI.
-
 Use descriptive session names: `codex-auth-refactor`, `claude-fix-78`. Kill sessions after capturing output to avoid sprawl.
 
 ### Waiting for completion
 
-**One-shot sessions** (`codex exec`, `claude -p`): the process exits when done, so poll `pane_dead`:
+All agents in this skill run as one-shot processes (`codex exec`, `claude -p`) that exit when done. Poll `pane_dead` to detect completion without wasted time:
 
 ```bash
 while [ "$(tmux display-message -t NAME -p '#{pane_dead}')" != "1" ]; do sleep 1; done
@@ -56,17 +47,7 @@ while [ "$(tmux display-message -t NAME -p '#{pane_dead}')" != "1" ]; do sleep 1
 # Exit code: tmux display-message -t NAME -p '#{pane_dead_status}'
 ```
 
-**Interactive codex sessions**: the process stays alive between turns. Codex shows `esc to interrupt` while processing a prompt, which disappears when it's done. Poll for that:
-
-```bash
-# Wait for processing to start
-while ! tmux capture-pane -t NAME -p -S - | grep -q "esc to interrupt"; do sleep 0.2; done
-# Wait for processing to finish
-while tmux capture-pane -t NAME -p -S - | grep -q "esc to interrupt"; do sleep 0.5; done
-# Now read: tmux capture-pane -t NAME -p -S -
-```
-
-> **Note:** The `esc to interrupt` marker is based on Codex CLI v0.104. If a future version changes this text, check `tmux capture-pane -t NAME -p -S -` while codex is processing to find the new indicator, and update the grep pattern accordingly.
+For multi-turn conversations, prefer `exec resume` over keeping an interactive TUI session alive — each turn is a clean one-shot process, so the same `pane_dead` polling works every time (see multi-turn examples below).
 
 ## Codex CLI
 
@@ -112,23 +93,17 @@ tmux new-session -d -s codex-task -c ~/project \
   "codex exec --full-auto --add-dir ../shared-lib 'Update the API client to use the new shared auth module'" \; \
   set remain-on-exit on
 
-# Multi-turn (exec + resume): one-shot, then continue non-interactively
+# Multi-turn: first turn with exec, then resume with follow-up
 tmux new-session -d -s codex-review -c ~/project \
-  "codex exec 'Review the auth module'" \; \
+  "codex exec --full-auto 'Review the auth module'" \; \
   set remain-on-exit on
-# Later: codex exec resume --last "Now fix the issues you found"
-
-# Multi-turn (interactive): keep an interactive session open and send follow-ups
-tmux new-session -d -s codex-chat -c ~/project \
-  "codex --full-auto" \; \
+# Wait for completion, then kill the session
+while [ "$(tmux display-message -t codex-review -p '#{pane_dead}')" != "1" ]; do sleep 1; done
+tmux kill-session -t codex-review
+# Resume with a follow-up prompt (starts a new one-shot process):
+tmux new-session -d -s codex-review-2 -c ~/project \
+  "codex exec resume --last --full-auto 'Now fix the issues you found'" \; \
   set remain-on-exit on
-# Send first prompt:
-tmux send-keys -t codex-chat "Review the auth module" && sleep 0.5 && tmux send-keys -t codex-chat Enter
-# Wait for it to finish (see "Waiting for completion" above):
-while ! tmux capture-pane -t codex-chat -p -S - | grep -q "esc to interrupt"; do sleep 0.2; done
-while tmux capture-pane -t codex-chat -p -S - | grep -q "esc to interrupt"; do sleep 0.5; done
-# Send follow-up:
-tmux send-keys -t codex-chat "Now fix the issues you found" && sleep 0.5 && tmux send-keys -t codex-chat Enter
 
 # Monitor
 tmux capture-pane -t codex-task -p -S -
@@ -191,12 +166,17 @@ tmux new-session -d -s claude-task -c ~/project \
   "claude -p --append-system-prompt-file /tmp/instructions.md 'Process src/auth/'" \; \
   set remain-on-exit on
 
-# Multi-turn: capture session ID, then resume
+# Multi-turn: capture session ID, then resume with follow-up
 tmux new-session -d -s claude-review -c ~/project \
   "claude -p --output-format json 'Review the auth module' > /tmp/claude-review.json" \; \
   set remain-on-exit on
-# Later: session_id=$(jq -r '.session_id' /tmp/claude-review.json)
-#        claude -p --resume "$session_id" "Now fix the issues you found"
+# Wait for completion, extract session ID, then resume:
+while [ "$(tmux display-message -t claude-review -p '#{pane_dead}')" != "1" ]; do sleep 1; done
+tmux kill-session -t claude-review
+SESSION_ID=$(jq -r '.session_id' /tmp/claude-review.json)
+tmux new-session -d -s claude-review-2 -c ~/project \
+  "claude -p --resume $SESSION_ID 'Now fix the issues you found'" \; \
+  set remain-on-exit on
 
 # Monitor
 tmux capture-pane -t claude-task -p -S -
