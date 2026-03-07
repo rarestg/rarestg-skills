@@ -22,7 +22,8 @@
         "./skills/task-os",
         "./skills/install-skills",
         "./skills/stacked-diffs",
-        "./skills/agents-md"
+        "./skills/agents-md",
+        "./skills/execplan"
       ]
     }
   ]
