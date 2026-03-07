@@ -21,6 +21,7 @@ Personal collection of [Agent Skills](https://agentskills.io).
 | [task-os](skills/task-os/) | Operating protocol using Taskwarrior as the continuity layer across conversations |
 | [install-skills](skills/install-skills/) | Install, discover, remove, and update agent skills via the npx skills CLI |
 | [stacked-diffs](skills/stacked-diffs/) | Break large changes into small, stacked PRs using vanilla git |
+| [agents-md](skills/agents-md/) | Create and maintain a concise AGENTS.md that routes agents to the repo's real sources of truth |
 
 ---
 

@@ -21,7 +21,8 @@
         "./skills/code-quality",
         "./skills/task-os",
         "./skills/install-skills",
-        "./skills/stacked-diffs"
+        "./skills/stacked-diffs",
+        "./skills/agents-md"
       ]
     }
   ]
