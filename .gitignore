@@ -1,2 +1,3 @@
 .claude/
 *.skill
+__pycache__/

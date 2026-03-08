@@ -22,6 +22,7 @@ Personal collection of [Agent Skills](https://agentskills.io).
 | [install-skills](skills/install-skills/) | Install, discover, remove, and update agent skills via the npx skills CLI |
 | [stacked-diffs](skills/stacked-diffs/) | Break large changes into small, stacked PRs using vanilla git |
 | [agents-md](skills/agents-md/) | Create and maintain a concise AGENTS.md that routes agents to the repo's real sources of truth |
+| [github-review-workflow](skills/github-review-workflow/) | Export a PR's inline review threads into a clean local queue for sequential triage and follow-through |
 
 ---
 
