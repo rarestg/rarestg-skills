@@ -5,6 +5,7 @@ description: >-
   and address them sequentially with focused agents. Use when given a GitHub
   pull request URL and asked to work through review comments without relying
   on noisy raw API blobs.
+disable-model-invocation: true
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent
 argument-hint: "<pr-url>"
 user-invocable: true
