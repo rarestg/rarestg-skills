@@ -49,11 +49,9 @@ Then open:
 
 ## Non-Negotiables
 
-- Actionable queue: `pullRequest.reviewThreads[].comments[]`
-- `pullRequest.reviews[]` is metadata, and `pullRequest.comments[]` is optional context
 - Work `todo/` sequentially
 - Do a local merit pass before changing code
-- For accepted items, use one worker per review item with `fork_context: false`, and give it only `context/00-dispatch-guidance.md`, `context/01-coderabbit-walkthrough.md` if present, and the assigned review item file
+- For accepted items, delegate to a fresh sub-task with no prior conversation context (`fork_context: false` where applicable), and give it only `context/00-dispatch-guidance.md`, `context/01-coderabbit-walkthrough.md` if present, and the assigned review item file
 - Do not mention the rest of the queue in the worker prompt
 - Audit locally before moving files to `done/` or `ignored/`
 - Use `python3 scripts/post_github_review_followup.py <review-item-file> ...` only after local audit

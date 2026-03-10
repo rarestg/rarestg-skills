@@ -34,8 +34,8 @@ Expected files:
 - `context/00-dispatch-guidance.md`: short worker brief
 - `context/01-coderabbit-walkthrough.md`: optional top-level context
 - `todo/`: review items not yet handled
-- `done/`: accepted and handled review items
-- `ignored/`: rejected review items
+- `done/`: accepted, implemented, audited, and followed up on GitHub
+- `ignored/`: rejected after audit, with GitHub follow-up posted
 
 Each review item file represents one review thread. It includes the IDs needed for GitHub follow-through:
 
@@ -72,9 +72,9 @@ For each review item:
 1. Read the review item, the dispatch guidance, and the walkthrough file if present.
 2. Inspect the referenced code directly.
 3. Decide whether the comment has enough merit to justify code changes.
-4. If not, move the file to `ignored/`.
+4. If not, post a GitHub reply explaining why the comment is not being taken, then move the file to `ignored/`.
 5. If yes, dispatch exactly one worker for that item.
-6. Spawn that worker with `fork_context: false` so it starts fresh with no prior conversation context.
+6. Delegate to a fresh sub-task with no prior conversation context (`fork_context: false` where applicable).
 7. Give the worker only:
    - `context/00-dispatch-guidance.md`
    - `context/01-coderabbit-walkthrough.md` if present
@@ -82,8 +82,9 @@ For each review item:
 8. Do not mention the rest of the queue, item count, or unassigned review comments.
 9. Wait for the worker result.
 10. Audit the diff yourself.
-11. If accepted, move the file to `done/`.
-12. If rejected after audit, move the file to `ignored/`.
+11. Post the required GitHub follow-up before moving the file:
+    - If accepted: reply with the fix summary and resolve the thread. Move to `done/`.
+    - If rejected after audit: reply with the reason. Resolve only if no further discussion is needed. Move to `ignored/`.
 
 Never hand the whole queue to one worker.
 
@@ -127,13 +128,24 @@ If two comments truly require one atomic fix, the parent agent must decide that 
 
 ## GitHub Follow-Through
 
-Only after local audit, use the helper script if you want to reply or resolve on GitHub:
+Every review item must receive a GitHub follow-up reply after local audit. This is part of the normal workflow, not an optional extra. Do not move files to `done/` or `ignored/` until follow-through is complete.
+
+For accepted items:
 
 ```bash
 python3 scripts/post_github_review_followup.py <review-item-file> \
   --reply 'Addressed locally: <summary>' \
   --resolve
 ```
+
+For rejected items:
+
+```bash
+python3 scripts/post_github_review_followup.py <review-item-file> \
+  --reply 'Not taking this change: <reason>'
+```
+
+Resolve rejected threads only when no further discussion is needed.
 
 Useful flags:
 
