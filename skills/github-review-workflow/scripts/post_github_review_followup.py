@@ -80,6 +80,7 @@ def post_reply(
     *,
     owner: str,
     repo: str,
+    pull_number: int,
     comment_database_id: str,
     reply_body: str,
 ) -> dict[str, Any]:
@@ -87,7 +88,7 @@ def post_reply(
         [
             "gh",
             "api",
-            f"repos/{owner}/{repo}/pulls/comments/{comment_database_id}/replies",
+            f"repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_database_id}/replies",
             "-X",
             "POST",
             "-f",
@@ -178,7 +179,7 @@ def main() -> int:
                 print("\n[DRY RUN] Would post reply:")
                 print(
                     "gh api "
-                    f"repos/{owner}/{repo}/pulls/comments/{primary_comment_database_id}/replies "
+                    f"repos/{owner}/{repo}/pulls/{number}/comments/{primary_comment_database_id}/replies "
                     "-X POST "
                     f"-f body={reply_text!r}"
                 )
@@ -201,6 +202,7 @@ def main() -> int:
             reply_response = post_reply(
                 owner=owner,
                 repo=repo,
+                pull_number=number,
                 comment_database_id=primary_comment_database_id,
                 reply_body=reply_text,
             )
