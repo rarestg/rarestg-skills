@@ -112,6 +112,13 @@ DISPATCH_GUIDANCE = """# Dispatch Guidance
 OUT_ROOT_GITIGNORE = "*\n!.gitignore\n"
 LEGACY_OUT_ROOT_GITIGNORE = "*\n!.gitignore\n!SOP.md\n"
 REVIEW_ITEM_TOP_SECTION_END = "---"
+WALKTHROUGH_BLOCK_PATTERN = re.compile(
+    r"<!--\s*walkthrough_start\s*-->(.*?)<!--\s*walkthrough_end\s*-->",
+    flags=re.S | re.I,
+)
+WALKTHROUGH_TRIM_AFTER_PATTERN = re.compile(
+    r"(?mi)^\s*##\s+Estimated Code Review Effort\b.*$"
+)
 
 
 def graphql_fetch(
@@ -343,7 +350,7 @@ def render_thread_file(
 
 
 def render_walkthrough_file(comment: dict[str, Any], pr: dict[str, Any]) -> str:
-    text = sanitize_comment_text(comment)
+    text = extract_coderabbit_walkthrough_text(comment)
     return "\n".join(
         [
             "# CodeRabbit Walkthrough",
@@ -360,6 +367,38 @@ def render_walkthrough_file(comment: dict[str, Any], pr: dict[str, Any]) -> str:
             "",
         ]
     )
+
+
+def extract_coderabbit_walkthrough_text(comment: dict[str, Any]) -> str:
+    raw_body = comment.get("body") or ""
+    match = WALKTHROUGH_BLOCK_PATTERN.search(raw_body)
+    if match:
+        text = sanitize_comment_text(
+            {
+                **comment,
+                "body": match.group(1).strip(),
+                "bodyText": None,
+            }
+        )
+        trim_match = WALKTHROUGH_TRIM_AFTER_PATTERN.search(text)
+        if trim_match:
+            return text[: trim_match.start()].rstrip()
+        return text
+    return sanitize_comment_text(comment)
+
+
+def is_coderabbit_walkthrough_comment(comment: dict[str, Any]) -> bool:
+    author_login = (comment.get("author") or {}).get("login")
+    if author_login != "coderabbitai":
+        return False
+
+    raw_body = comment.get("body") or ""
+    if "<!-- walkthrough_start -->" in raw_body:
+        return True
+
+    text = sanitize_comment_text(comment)
+    first_nonempty_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    return bool(re.match(r"^(?:#+\s*)?walkthrough\b", first_nonempty_line, flags=re.I))
 
 
 def write_text(path: Path, content: str) -> None:
@@ -410,15 +449,7 @@ def export_review_bundle(
     write_text(context_dir / "00-dispatch-guidance.md", DISPATCH_GUIDANCE)
 
     top_level_comments = payload["comments"]
-    walkthrough_comment = next(
-        (
-            comment
-            for comment in top_level_comments
-            if (comment.get("author") or {}).get("login") == "coderabbitai"
-            and sanitize_comment_text(comment).startswith("Walkthrough")
-        ),
-        None,
-    )
+    walkthrough_comment = next((comment for comment in top_level_comments if is_coderabbit_walkthrough_comment(comment)), None)
     walkthrough_path: Path | None = None
     if walkthrough_comment:
         walkthrough_path = context_dir / "01-coderabbit-walkthrough.md"
