@@ -1,6 +1,6 @@
 # rarestg-skills
 
-Personal collection of [Agent Skills](https://agentskills.io).
+Personal collection of [Agent Skills](https://agentskills.io) and SOPs for AI coding agents.
 
 ## Install
 
@@ -16,12 +16,14 @@ Personal collection of [Agent Skills](https://agentskills.io).
 | [merge-stack](skills/merge-stack/) | Merge a linear stack of GitHub PRs into main one by one |
 | [skill-review](skills/skill-review/) | Review a skill for quality, completeness, and correctness |
 | [coding-agent](skills/coding-agent/) | Orchestrate Codex CLI and Claude Code as background assistants via tmux |
+| [delegated-delivery](skills/delegated-delivery/) | Run tickets through a layered main PM -> sub-PM -> worker -> reviewer delivery loop |
 | [cf-browser](skills/cf-browser/) | Browse and scrape websites via Cloudflare Browser Rendering API |
 | [code-quality](skills/code-quality/) | Set up formatting, linting, type checking, and pre-commit hooks from day one |
 | [task-os](skills/task-os/) | Operating protocol using Taskwarrior as the continuity layer across conversations |
 | [install-skills](skills/install-skills/) | Install, discover, remove, and update agent skills via the npx skills CLI |
 | [stacked-diffs](skills/stacked-diffs/) | Break large changes into small, stacked PRs using vanilla git |
 | [agents-md](skills/agents-md/) | Create and maintain a concise AGENTS.md that routes agents to the repo's real sources of truth |
+| [execplan](skills/execplan/) | Write a self-contained execution plan for complex, multi-step implementation work |
 | [github-review-workflow](skills/github-review-workflow/) | Export a PR's inline review threads into a clean local queue for sequential triage and follow-through |
 
 ---
@@ -138,5 +140,6 @@ Summarize this pull request.
 
 1. Create `skills/<skill-name>/SKILL.md` (plus any supporting files)
 2. Add `"./skills/<skill-name>"` to the `skills` array in `.claude-plugin/marketplace.json`
-3. Commit and push
-4. Run `/plugin marketplace update` to pull the latest
+3. Add the skill to the table in `README.md`
+4. Commit and push
+5. Run `/plugin marketplace update` to pull the latest

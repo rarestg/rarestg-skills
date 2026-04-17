@@ -4,19 +4,20 @@
     "name": "rarestg"
   },
   "metadata": {
-    "description": "Personal skills collection",
-    "version": "1.0.0"
+    "description": "Personal AI coding agent skills and SOPs",
+    "version": "1.1.0"
   },
   "plugins": [
     {
       "name": "rarestg-skills",
-      "description": "Personal skills for git workflows and developer productivity",
+      "description": "Personal skills for AI coding agent workflows, planning, reviews, web automation, and developer productivity",
       "source": "./",
       "strict": false,
       "skills": [
         "./skills/merge-stack",
         "./skills/skill-review",
         "./skills/coding-agent",
+        "./skills/delegated-delivery",
         "./skills/cf-browser",
         "./skills/code-quality",
         "./skills/task-os",
