@@ -129,6 +129,9 @@ Default loop:
    closes it out
 
 By default, use one implementation worker and one reviewer per ticket.
+When waiting on delegated agents, use the maximum wait timeout the tool
+supports instead of short polling; long waits should still return early on
+completion, and if they time out you can renew the long wait.
 
 ## Prompting Guidance
 
