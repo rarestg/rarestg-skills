@@ -97,6 +97,27 @@ query(
 }
 """
 
+THREAD_COMMENTS_QUERY = """\
+query($threadId: ID!, $commentsCursor: String) {
+  node(id: $threadId) {
+    ... on PullRequestReviewThread {
+      comments(first: 100, after: $commentsCursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          fullDatabaseId
+          body
+          bodyText
+          createdAt
+          url
+          author { login }
+        }
+      }
+    }
+  }
+}
+"""
+
 DISPATCH_GUIDANCE = """# Dispatch Guidance
 
 - Start with a fresh context.
@@ -159,6 +180,84 @@ def graphql_fetch(
     if threads_cursor:
         command += ["-F", f"threadsCursor={threads_cursor}"]
     return run_json(command, stdin=GRAPHQL_QUERY)
+
+
+def graphql_fetch_thread_comments(
+    *,
+    thread_id: str,
+    comments_cursor: str | None = None,
+) -> dict[str, Any]:
+    command = [
+        "gh",
+        "api",
+        "graphql",
+        "-F",
+        "query=@-",
+        "-F",
+        f"threadId={thread_id}",
+    ]
+    if comments_cursor:
+        command += ["-F", f"commentsCursor={comments_cursor}"]
+    return run_json(command, stdin=THREAD_COMMENTS_QUERY)
+
+
+def fetch_all_review_thread_comments(
+    thread_id: str,
+    initial_connection: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    comments: list[dict[str, Any]] = []
+    seen_comment_ids: set[str] = set()
+    comments_cursor: str | None = None
+    fetch_comments = True
+
+    if initial_connection is not None:
+        for comment in initial_connection["nodes"] or []:
+            comment_id = comment.get("id")
+            if comment_id and comment_id in seen_comment_ids:
+                continue
+            if comment_id:
+                seen_comment_ids.add(comment_id)
+            comments.append(comment)
+
+        fetch_comments = initial_connection["pageInfo"]["hasNextPage"]
+        comments_cursor = (
+            initial_connection["pageInfo"]["endCursor"] if fetch_comments else None
+        )
+
+    while fetch_comments:
+        if comments_cursor is None and comments:
+            raise RuntimeError(
+                f"Failed to continue review thread comment pagination for {thread_id}"
+            )
+        payload = graphql_fetch_thread_comments(
+            thread_id=thread_id,
+            comments_cursor=comments_cursor,
+        )
+        if "errors" in payload and payload["errors"]:
+            raise RuntimeError(json.dumps(payload["errors"], indent=2))
+
+        node = payload.get("data", {}).get("node")
+        if node is None:
+            raise RuntimeError(f"Failed to load review thread comments for {thread_id}")
+
+        comments_connection = node["comments"]
+        for comment in comments_connection["nodes"] or []:
+            comment_id = comment.get("id")
+            if comment_id and comment_id in seen_comment_ids:
+                continue
+            if comment_id:
+                seen_comment_ids.add(comment_id)
+            comments.append(comment)
+
+        fetch_comments = comments_connection["pageInfo"]["hasNextPage"]
+        comments_cursor = (
+            comments_connection["pageInfo"]["endCursor"] if fetch_comments else None
+        )
+
+    return {
+        "pageInfo": {"hasNextPage": False, "endCursor": None},
+        "nodes": comments,
+    }
 
 
 def fetch_pull_request(owner: str, repo: str, number: int) -> dict[str, Any]:
@@ -246,6 +345,15 @@ def fetch_pull_request(owner: str, repo: str, number: int) -> dict[str, Any]:
 
     if pr_meta is None:
         raise RuntimeError("Failed to load pull request metadata")
+
+    for thread in review_threads:
+        comments_connection = thread.get("comments", {})
+        comments_page_info = comments_connection.get("pageInfo", {})
+        if comments_page_info.get("hasNextPage"):
+            thread["comments"] = fetch_all_review_thread_comments(
+                thread["id"],
+                comments_connection,
+            )
 
     return {
         "pull_request": pr_meta,
@@ -612,8 +720,10 @@ def export_review_bundle(
             "## Notes",
             "",
             "- The actionable queue comes from `reviewThreads.comments`, not `reviews`.",
-            "- Use the bundled follow-up script after local audit if you want to reply or resolve on GitHub.",
-            "- Move files from `todo/` to `done/` or `ignored/` after audit.",
+            "- Re-running export preserves existing `todo/`, `done/`, and "
+            "`ignored/` placement by thread id.",
+            "- Use the bundled follow-up script after local audit to post the required GitHub follow-up.",
+            "- Move files from `todo/` to `done/` or `ignored/` only after follow-through is complete.",
         ]
     )
 

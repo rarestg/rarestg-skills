@@ -112,6 +112,34 @@ def resolve_thread(thread_id: str) -> dict[str, Any]:
     )
 
 
+def resolved_thread_from_response(response: dict[str, Any]) -> dict[str, Any]:
+    errors = response.get("errors")
+    if errors:
+        raise RuntimeError(
+            "GitHub GraphQL returned errors while resolving the thread:\n"
+            f"{json.dumps(errors, indent=2)}"
+        )
+
+    thread = (
+        response.get("data", {})
+        .get("resolveReviewThread", {})
+        .get("thread")
+    )
+    if not isinstance(thread, dict):
+        raise RuntimeError(
+            "GitHub GraphQL resolve response did not include a thread:\n"
+            f"{json.dumps(response, indent=2)}"
+        )
+
+    if thread.get("isResolved") is not True:
+        raise RuntimeError(
+            "GitHub GraphQL did not mark the thread resolved:\n"
+            f"{json.dumps(thread, indent=2)}"
+        )
+
+    return thread
+
+
 def print_metadata(metadata: dict[str, str], *, owner: str, repo: str, number: int) -> None:
     print(f"PR: {owner}/{repo}#{number}")
     print(f"Thread ID: {metadata['Thread ID']}")
@@ -193,6 +221,8 @@ def main() -> int:
 
         ensure_gh_authenticated()
 
+        reply_posted = False
+
         if reply_text is not None:
             if not metadata_value_present(primary_comment_database_id):
                 raise ValueError(
@@ -208,14 +238,21 @@ def main() -> int:
             )
             print("\nReply posted:")
             print(reply_response.get("html_url") or reply_response.get("url") or reply_response)
+            reply_posted = True
 
         if args.resolve:
-            resolve_response = resolve_thread(metadata["Thread ID"])
-            thread = (
-                resolve_response.get("data", {})
-                .get("resolveReviewThread", {})
-                .get("thread", {})
-            )
+            try:
+                resolve_response = resolve_thread(metadata["Thread ID"])
+                thread = resolved_thread_from_response(resolve_response)
+            except Exception as error:
+                if reply_posted:
+                    raise RuntimeError(
+                        f"{error}\n\n"
+                        "Reply was posted, but resolving the thread failed. "
+                        "Do not post a duplicate reply; rerun this script with "
+                        "`--resolve` only after fixing the GitHub/auth issue."
+                    ) from error
+                raise
             print("\nThread resolved:")
             print(json.dumps(thread, indent=2))
 
