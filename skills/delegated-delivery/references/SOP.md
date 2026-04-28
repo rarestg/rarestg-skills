@@ -125,11 +125,15 @@ whatever form best fits the work, but it should include:
 - any local repo or environment rules that materially affect the work
 
 Keep repo-specific constraints in the packet, not in the general SOP.
+Do not force ticket packets or handoffs into a predefined template. The contract
+matters; the shape should be whatever lets the PM and sub-PM communicate it
+clearly for the specific work.
 
 ## Ticket Scratchpad
 
-Use a ticket scratchpad when more than one agent needs the same scoped context,
-or when the ticket has non-obvious source-of-truth, invariants, or risks.
+Default to a lightweight ticket scratchpad for non-trivial delegated tickets.
+Use one when more than one agent needs the same scoped context, or when the
+ticket has non-obvious source-of-truth, invariants, or risks.
 
 The scratchpad is a verified working summary. It may include:
 
@@ -191,6 +195,10 @@ Give:
 Do not rely on file paths alone. A good worker brief explains what must remain
 true.
 
+Ask the worker to leave enough handoff context for review in whatever form fits
+the change: what changed, changed file paths and rationale, validation run and
+observed results, open questions, and residual risks.
+
 ### For the reviewer
 
 Give:
@@ -219,6 +227,8 @@ Give:
 
 Ask for high-value simplification opportunities only. "No worthwhile
 simplification found" is a successful result.
+The maintainability pass is read-only unless the sub-PM explicitly accepts a
+targeted simplification and routes it through implementation.
 
 ## Review Triage
 
@@ -247,6 +257,10 @@ The sub-PM owns triage for maintainability recommendations.
 Keep the pass focused on changed files, nearby abstractions, touched tests, and
 directly affected docs unless a specific risk points elsewhere.
 
+Treat the pass as read-only by default. It should recommend concrete
+opportunities, not edit files, unless the sub-PM accepts a targeted
+simplification and routes it through implementation.
+
 Introduce abstractions or patterns only when they remove real repetition or
 complexity and clearly earn their keep.
 
@@ -268,8 +282,9 @@ The maintainability pass has three valid outcomes:
 - escalation because the simplification opportunity reveals a scope or design
   problem
 
-If accepted simplifications change behavior or shared structure, run targeted
-validation and consider a focused follow-up review.
+Accepted maintainability changes that touch code, tests, docs with behavioral
+meaning, or shared structure must go back through implementation and focused
+review before closeout.
 
 ## Validation And Closeout
 
@@ -311,6 +326,11 @@ The main PM should accept a ticket when:
 - validation is good enough for the ticket
 - the residual risks are explicit
 - the result still fits the broader product and sequencing direction
+
+For substantive delegated work, the main PM should do a lightweight sanity
+review of the changed files or diff before accepting: confirm the outcome
+packet matches reality, validation is credible, and the work did not drift
+outside the ticket scope.
 
 The main PM should inspect the actual diff or resulting files on risky,
 ambiguous, or high-impact tickets. For routine work, the main PM can rely more

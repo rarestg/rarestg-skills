@@ -9,7 +9,7 @@ description: >-
   than a single-pass
   implementation. Triggers on: "delegate this ticket", "use a sub-PM", "run
   this through worker and reviewer", "own this ticket end to end", "send
-  this for independent review", or "close this out and report back". Skip
+  this for independent review", or "close this ticket out with review". Skip
   trivial fixes and tasks that are still too vague to delegate.
 allowed-tools: Bash, Read, Glob, Grep, Write, Edit, Agent
 argument-hint: "<ticket or delivery objective>"
@@ -30,9 +30,14 @@ Use a layered execution model:
 `references/SOP.md` is the canonical operating model. Read it when you are
 actually running a ticket through this workflow.
 
-Dispatch prompts may be free-form, but must preserve the ticket contract:
-problem, invariants, scope, non-goals, source-of-truth order, acceptance
-criteria, validation, and escalation triggers.
+Use this workflow only when the user clearly wants delegated or agent-based
+delivery, a worker/reviewer loop, independent review, or ticket ownership. Do
+not infer delegation from a generic request to finish or close out work.
+
+Dispatch prompts should be free-form, not forced into templates. Preserve the
+ticket contract in whatever shape fits the work: problem, invariants, scope,
+non-goals, source-of-truth order, acceptance criteria, validation, and
+escalation triggers.
 
 ## Workflow
 
