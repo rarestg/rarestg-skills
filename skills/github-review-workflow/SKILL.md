@@ -1,10 +1,11 @@
 ---
 name: github-review-workflow
 description: >-
-  Export a PR's clean inline review comments and CodeRabbit nitpicks into
-  local files, then triage and address review feedback through an
-  orchestrator-led local workflow. Use when given a GitHub pull request URL and
-  asked to work through review comments without relying on noisy raw API blobs.
+  Export a PR's clean inline review comments, CodeRabbit outside-diff comments,
+  and CodeRabbit nitpicks into local files, then triage and address review
+  feedback through an orchestrator-led local workflow. Use when given a GitHub
+  pull request URL and asked to work through review comments without relying on
+  noisy raw API blobs.
 disable-model-invocation: true
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent
 argument-hint: "<pr-url>"
@@ -13,9 +14,9 @@ user-invocable: true
 
 # GitHub Review Workflow
 
-Export inline PR review threads into a local queue, export CodeRabbit nitpicks
-into a separate lower-priority queue, then follow this skill's local-first
-orchestration workflow in `references/SOP.md`.
+Export inline PR review threads into a local queue, export CodeRabbit
+outside-diff comments and nitpicks into separate local-only queues, then follow
+this skill's local-first orchestration workflow in `references/SOP.md`.
 
 ## Prerequisites
 
@@ -43,6 +44,9 @@ Read the full bundle before editing:
 - `GitHub Reviews/pr-<number>-<slug>/README.md`
 - `GitHub Reviews/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
 - all files in `GitHub Reviews/pr-<number>-<slug>/todo/`
+- all files in `GitHub Reviews/pr-<number>-<slug>/outside-diff/` if it exists;
+  triage them as local-only review-summary items because GitHub could not post
+  them inline
 - all files in `GitHub Reviews/pr-<number>-<slug>/nitpicks/` if it exists;
   triage them as lower-priority local-only items unless the user asked to
   handle them now
@@ -65,7 +69,7 @@ Read the full bundle before editing:
   may be one item or a small related group, never the whole queue.
 - Audit locally and capture the relevant changed files/checks before posting a
   reply or moving files to `done/` or `ignored/`.
-- Nitpicks are local-only by default because they are not review threads; do
-  not use the follow-up script for them.
+- Outside-diff comments and nitpicks are local-only by default because they are
+  not review threads; do not use the follow-up script for them.
 - Leave accepted fixes in the current working tree and report back unless the
   user explicitly requests commit, push, PR, or thread-resolution follow-through.

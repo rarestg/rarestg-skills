@@ -2,10 +2,10 @@
 
 ## Purpose
 
-Turn a GitHub PR URL into a clean local queue of review threads and a separate
-CodeRabbit nitpick queue, then triage the full bundle up front, address
-accepted work locally, and post accurate review-thread replies as the GitHub
-ledger of what was handled.
+Turn a GitHub PR URL into a clean local queue of review threads plus separate
+CodeRabbit outside-diff and nitpick queues, then triage the full bundle up
+front, address accepted work locally, and post accurate review-thread replies
+as the GitHub ledger of what was handled.
 
 This reference lives inside the skill. The bundled scripts generate review
 bundles under `GitHub Reviews/` in the current project.
@@ -18,9 +18,11 @@ The workflow exists to avoid these failure modes:
 
 ## Queues
 
-Inline review threads are the main action queue. CodeRabbit nitpicks are
-exported separately, triaged up front, and lower priority by default. Summary
-review wrappers are context, not work items.
+Inline review threads are the main action queue. CodeRabbit outside-diff
+comments are exported separately because GitHub could not place them inline;
+triage them after thread-backed `todo/` items and before lower-priority
+nitpicks. CodeRabbit nitpicks are exported separately, triaged up front, and
+lower priority by default. Summary review wrappers are context, not work items.
 
 ## Bundle Layout
 
@@ -32,15 +34,18 @@ Expected files:
 - `manifest.json`: machine-readable export metadata
 - `context/01-coderabbit-walkthrough.md`: optional top-level context
 - `todo/`: review items not yet handled
+- `outside-diff/`: CodeRabbit outside-diff review-summary items; actionable but
+  not thread-backed
 - `nitpicks/`: CodeRabbit nitpick summary items, lower priority than `todo/`
 - `done/`: accepted, locally implemented, audited, and replied to when
   thread-backed
 - `ignored/`: declined after merit, scope, or audit review, and replied to when
   thread-backed
 
-Review item files include the IDs needed for follow-up replies. Nitpick files
-are not GitHub review threads and must not use the bundled follow-up script. Do
-not delete review files; folder placement is the status record.
+Thread-backed review item files include the IDs needed for follow-up replies.
+Outside-diff and nitpick files are not GitHub review threads and must not use
+the bundled follow-up script. Do not delete review files; folder placement is
+the status record.
 
 ## Export
 
@@ -61,7 +66,8 @@ Useful flags:
 - `--out-root <path>` writes bundles somewhere other than `GitHub Reviews/`
 
 Re-running the exporter preserves recognized local status placement and adds
-newly discovered inline threads to `todo/` and nitpicks to `nitpicks/`.
+newly discovered inline threads to `todo/`, outside-diff comments to
+`outside-diff/`, and nitpicks to `nitpicks/`.
 
 After export, open:
 
@@ -69,6 +75,8 @@ After export, open:
 - `GitHub Reviews/pr-<number>-<slug>/README.md`
 - `GitHub Reviews/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
 - all files in `GitHub Reviews/pr-<number>-<slug>/todo/`
+- all files in `GitHub Reviews/pr-<number>-<slug>/outside-diff/` if it exists;
+  triage them as local-only items because GitHub could not place them inline
 - all files in `GitHub Reviews/pr-<number>-<slug>/nitpicks/` if it exists;
   triage them as lower-priority local-only items unless the user asked to
   handle them now
@@ -112,7 +120,8 @@ in the final handoff.
 
 ## Review Loop
 
-Handle `todo/` before `nitpicks/` unless the user explicitly asks otherwise.
+Handle `todo/` before `outside-diff/`, and `outside-diff/` before `nitpicks/`,
+unless the user explicitly asks otherwise.
 Use the initial triage to choose bounded work units: one review item, or a
 small related group.
 
@@ -143,10 +152,27 @@ in the current working tree and report back. If reply posting fails, leave the
 item in `todo/`, report the blocker, and do not mark it `done/` or `ignored/`
 unless the user explicitly chooses to skip the GitHub reply.
 
+## Outside-Diff Loop
+
+Read and triage `outside-diff/` during the initial bundle pass. Execute them
+after `todo/` is empty or when the user explicitly asks to handle them. These
+are CodeRabbit review-summary items that could not become inline GitHub review
+threads, so they are local-only by default:
+
+- inspect the referenced code directly
+- apply the same merit gate as thread-backed comments
+- do not call the bundled follow-up script
+- move accepted outside-diff items to `done/` after local audit
+- move declined outside-diff items to `ignored/` after recording the reason
+- do not post a GitHub reply unless explicitly requested
+- if the user wants a public ledger, prefer one manual summary comment using
+  the `Review URL` for context
+
 ## Nitpick Loop
 
 Read and triage `nitpicks/` during the initial bundle pass. Execute them only
-after `todo/` is empty or when the user explicitly asks to handle nitpicks.
+after `todo/` and `outside-diff/` are empty or when the user explicitly asks to
+handle nitpicks.
 Apply the same merit gate, but remember that these files do not represent
 GitHub review threads:
 
