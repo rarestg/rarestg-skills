@@ -1,8 +1,9 @@
-# Graphify Architecture Review SOP
+# Graphify-Led Architecture Review SOP
 
 Use this SOP to turn a codebase graph into source-validated architecture
 insights and concrete refactor plans. It is written for any repo where
-Graphify can generate a semantic graph and where agents can inspect source.
+Graphify can generate a semantic graph and where investigators can inspect
+source.
 
 ## Expected Inputs
 
@@ -18,7 +19,19 @@ Graphify can generate a semantic graph and where agents can inspect source.
 - Scratch space for generated chunk JSON, subagent notes, and working docs.
 - A source-search tool for validation. Prefer semantic search when available;
   fall back to `rg` and direct file reads.
-- Subagents for extraction, investigation, synthesis, and review.
+- Subagents or parallel investigators for extraction, investigation,
+  synthesis, and review, when available.
+
+## Run Metadata
+
+Record this before analysis so findings stay tied to a concrete snapshot:
+
+- repo path or scoped subtree
+- branch name and commit SHA
+- date/time
+- Graphify version or install source
+- included and excluded paths
+- whether tests, docs, archived plans, examples, and sample data were included
 
 ## Core Rules
 
@@ -28,8 +41,21 @@ Graphify can generate a semantic graph and where agents can inspect source.
 - Commit or preserve only curated findings, decisions, and refactor plans.
 - Prefer concise documents over large pasted graph output.
 - Use human judgment for prioritization, boundaries, and plan quality.
-- Use subagents for bounded investigation, not final acceptance.
+- Use subagents or parallel investigators for bounded investigation, not final
+  acceptance.
 - Start the review corpus early; use it as input for second-wave planning.
+
+## Operator Checklist
+
+1. Record run metadata.
+2. Read repo guidance and define the included corpus.
+3. Generate Graphify artifacts.
+4. Filter or classify generic-node noise.
+5. Package concise first-pass findings.
+6. Validate important graph claims in source.
+7. Use investigators for bounded follow-up when available.
+8. Write plans only for source-validated, high-value opportunities.
+9. Keep generated graph artifacts ignored unless explicitly requested.
 
 ## 1. Prepare The Repo
 
@@ -54,9 +80,9 @@ Graphify can generate a semantic graph and where agents can inspect source.
 4. Put each image, audio, or video artifact in its own work unit when semantic
    extraction needs multimodal context.
 5. Run AST extraction and semantic extraction in parallel when possible.
-6. Dispatch semantic extraction agents with exact file lists.
-7. Require each extraction agent to write valid JSON with `nodes`, `edges`, and
-   optional `hyperedges`.
+6. Assign semantic extraction chunks with exact file lists.
+7. Require each chunk to produce valid JSON with `nodes`, `edges`, and optional
+   `hyperedges`.
 8. Validate each chunk before merging.
 9. Deduplicate nodes by id.
 10. Merge AST and semantic extraction outputs.
@@ -87,12 +113,11 @@ Default noisy labels:
 - `.clone()`
 - `.from()`
 - `.into()`
-- `main()`
-- `run()`
 
-Use caution with names like `.load()`, `.open()`, `.save()`, `.build()`, and
-`.parse()`. These may be generic noise or important domain methods depending
-on receiver/type.
+Use caution with names like `main()`, `run()`, `.load()`, `.open()`,
+`.save()`, `.build()`, and `.parse()`. These may be generic noise, important
+entrypoints, or important domain methods depending on receiver/type and repo
+shape.
 
 Preserve semantic signal:
 
@@ -151,10 +176,16 @@ Each finding should include:
 
 - graph evidence
 - source evidence
+- current behavior
+- why the connection exists
 - verdict
 - recommended action
 
 Avoid pasting large graph output. Link or name the generated artifact instead.
+
+A finding is source-validated only when it names the graph
+node/edge/community evidence, source file and symbol, current behavior, why the
+connection exists, verdict, and action.
 
 ## 6. Query The Graph, Then Validate In Source
 
@@ -170,7 +201,7 @@ graphify query "<question>" --dfs --graph graphify-out/graph.json --budget 2000
 Then rewrite the graph result as a behavioral source question:
 
 ```sh
-mgrep search "Where does this behavior happen, and which module owns it?" <likely/path>
+mgrep search "Where does this behavior happen, and which module owns it?" <likely/path> # if available
 rg "symbol_or_label" <likely/path>
 ```
 
@@ -184,14 +215,14 @@ Validation rules:
 
 ## 7. Dispatch First-Wave Investigation Agents
 
-Use focused agents after the first-pass corpus exists.
+Use focused agents or reviewers after the first-pass corpus exists.
 
 Suggested work units:
 
-- one agent for god nodes
-- one agent for surprising connections
-- one or more agents for generated questions, grouped by subsystem
-- one agent for graph-shape/topology anomalies if needed
+- one investigator for god nodes
+- one investigator for surprising connections
+- one or more investigators for generated questions, grouped by subsystem
+- one investigator for graph-shape/topology anomalies if needed
 
 Investigation agent prompt:
 
@@ -215,8 +246,8 @@ which findings deserve durable plans.
 
 ## 8. Run Second-Wave Refactor Synthesis
 
-After the review corpus exists, ask multiple agents to independently identify
-the top cleanup or refactor opportunities.
+After the review corpus exists, ask multiple agents or reviewers to
+independently identify the top cleanup or refactor opportunities.
 
 Synthesis prompt:
 
@@ -233,8 +264,12 @@ Compare overlap across agents. Prefer opportunities that:
 - deepen an existing good boundary
 - reduce drift between similar flows
 - simplify overloaded implementations
+- delete code or consolidate behavior
+- reduce cross-boundary ownership confusion
+- make future features easier to add
 - keep public APIs stable
 - make tests more clearly express product contracts
+- have clear verification
 
 Do not create plans for:
 
@@ -323,6 +358,14 @@ Graph build gates:
 - chunk failures are below threshold
 - generated artifacts are ignored
 
+Example checks:
+
+```sh
+jq empty graphify-out/graph.json
+test -s graphify-out/GRAPH_REPORT.md
+git check-ignore graphify-out/graph.json
+```
+
 Insight gates:
 
 - every strong claim has graph evidence and source evidence
@@ -339,7 +382,16 @@ Planning gates:
 - plan-review feedback has been considered
 - docs lint passes for tracked docs
 
-## 12. Failure Modes
+## 12. Branch And Commit Policy
+
+- Work on a branch when the review will produce durable docs or plans.
+- Keep generated graph artifacts ignored by default.
+- Commit curated findings, decisions, and refactor plans.
+- Commit plan docs separately from implementation work when possible.
+- Commit graph-shape analysis only when it contains source-validated findings
+  or useful watchpoints.
+
+## 13. Failure Modes
 
 - Generic nodes create false cross-community bridges.
 - Method labels lose receiver/type identity.
@@ -351,7 +403,7 @@ Planning gates:
 - Subagents return invalid JSON or unsupported speculation.
 - Refactor plans optimize graph aesthetics instead of codebase maintainability.
 
-## 13. Stop Conditions
+## 14. Stop Conditions
 
 Stop when:
 
