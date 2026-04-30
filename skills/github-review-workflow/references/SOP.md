@@ -68,7 +68,6 @@ After export, open:
 
 - `$SKILL_DIR/references/SOP.md`
 - `GitHub Reviews/pr-<number>-<slug>/README.md`
-- `GitHub Reviews/pr-<number>-<slug>/context/00-dispatch-guidance.md`
 - `GitHub Reviews/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
 - all files in `GitHub Reviews/pr-<number>-<slug>/todo/`
 - all files in `GitHub Reviews/pr-<number>-<slug>/nitpicks/` if it exists;
@@ -91,11 +90,10 @@ Global triage is for context, deduplication, grouping, and ordering. Execution
 must still happen in bounded, auditable work units rather than as one large
 undifferentiated change.
 
-## Stack Safety
+## Local Base
 
-Before editing, do a lightweight stack/base check. Use it to choose or confirm
-the local base for fixes, not to update remote branches by default. Deepen the
-check only when the current branch, PR head, or intended fix branch is
+Before editing, make sure you are on the right local base for the fixes. Check
+the stack only when the current branch, PR head, or intended fix branch is
 ambiguous.
 
 Default behavior keeps code changes local:
@@ -130,9 +128,8 @@ For each work unit:
    files, relevant item files, and implementation constraints. Do not hand over
    the full queue.
 6. Audit the final diff yourself, including worker output.
-7. Capture lightweight local evidence before posting: relevant changed files,
-   verification run, `git status --short`, and enough `git diff -- <files>`
-   review to know the reply is true. Do not stage changes by default.
+7. Audit the relevant diff/status before replying. Do not stage changes by
+   default.
 8. For each thread-backed item in the work unit, post the GitHub reply before
    moving the file:
    - accepted: `Addressed locally but not pushed: <summary>`
@@ -205,16 +202,16 @@ say that it was addressed locally but not pushed.
 Review-thread replies are the one default GitHub mutation; commits, pushes, PR
 creation, branch updates, and thread resolution remain opt-in.
 
-Before posting a reply, capture lightweight local evidence:
+Before posting a reply, audit the relevant local diff/status:
 
 ```bash
 git status --short
 git diff -- <changed-files>
 ```
 
-Use this evidence to verify the reply is true and to summarize changed files
-and checks in the final handoff. Do not `git add` by default; staging can
-interfere with the user's commit plan.
+Use this to verify the reply is true and to summarize changed files and checks
+in the final handoff. Do not `git add` by default; staging can interfere with
+the user's commit plan.
 
 Do not resolve review threads while fixes exist only in the working tree unless
 the user explicitly requests resolution.

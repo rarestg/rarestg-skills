@@ -41,7 +41,6 @@ Read the full bundle before editing:
 
 - `$SKILL_DIR/references/SOP.md`
 - `GitHub Reviews/pr-<number>-<slug>/README.md`
-- `GitHub Reviews/pr-<number>-<slug>/context/00-dispatch-guidance.md`
 - `GitHub Reviews/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
 - all files in `GitHub Reviews/pr-<number>-<slug>/todo/`
 - all files in `GitHub Reviews/pr-<number>-<slug>/nitpicks/` if it exists;
@@ -64,6 +63,8 @@ Read the full bundle before editing:
 - The orchestrator owns the queue. Implement small, obvious fixes directly.
 - Delegate only bounded work units that justify worker overhead. A work unit
   may be one item or a small related group, never the whole queue.
+- When delegating, pass or read `context/00-dispatch-guidance.md` with the
+  assigned item files.
 - Audit locally and capture the relevant changed files/checks before posting a
   reply or moving files to `done/` or `ignored/`.
 - Nitpicks are local-only by default because they are not review threads; do
