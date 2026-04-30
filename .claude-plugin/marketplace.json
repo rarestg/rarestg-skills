@@ -18,6 +18,7 @@
         "./skills/skill-review",
         "./skills/coding-agent",
         "./skills/delegated-delivery",
+        "./skills/graphify-architecture-review",
         "./skills/cf-browser",
         "./skills/code-quality",
         "./skills/task-os",

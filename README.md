@@ -17,6 +17,7 @@ Personal collection of [Agent Skills](https://agentskills.io) and SOPs for AI co
 | [skill-review](skills/skill-review/) | Review a skill for quality, completeness, and correctness |
 | [coding-agent](skills/coding-agent/) | Orchestrate Codex CLI and Claude Code as background assistants via tmux |
 | [delegated-delivery](skills/delegated-delivery/) | Run tickets through a layered main PM -> sub-PM -> worker -> reviewer delivery loop |
+| [graphify-architecture-review](skills/graphify-architecture-review/) | Use Graphify semantic graphs to analyze architecture and source-validate refactor opportunities |
 | [cf-browser](skills/cf-browser/) | Browse and scrape websites via Cloudflare Browser Rendering API |
 | [code-quality](skills/code-quality/) | Set up formatting, linting, type checking, and pre-commit hooks from day one |
 | [task-os](skills/task-os/) | Operating protocol using Taskwarrior as the continuity layer across conversations |
