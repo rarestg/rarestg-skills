@@ -120,18 +120,6 @@ query($threadId: ID!, $commentsCursor: String) {
 }
 """
 
-DISPATCH_GUIDANCE = """# Dispatch Guidance
-
-- Start with a fresh context.
-- Read this file, the assigned review item files, `01-coderabbit-walkthrough.md` if present, and only the code needed to evaluate that work unit.
-- Reassess whether the comment has merit before editing.
-- If valid, implement the smallest defensible fix.
-- If not worth taking, make no code change and explain why.
-- Do not address review items outside the assigned work unit.
-- Do not widen scope or touch files outside the assigned ownership unless the parent agent explicitly expands scope.
-- Preserve unrelated user changes in the worktree.
-"""
-
 OUT_ROOT_GITIGNORE = "*\n!.gitignore\n"
 LEGACY_OUT_ROOT_GITIGNORE = "*\n!.gitignore\n!SOP.md\n"
 REVIEW_ITEM_TOP_SECTION_END = "---"
@@ -841,8 +829,6 @@ def export_review_bundle(
     done_dir.mkdir(parents=True, exist_ok=True)
     ignored_dir.mkdir(parents=True, exist_ok=True)
 
-    write_text(context_dir / "00-dispatch-guidance.md", DISPATCH_GUIDANCE)
-
     top_level_comments = payload["comments"]
     walkthrough_comment = next((comment for comment in top_level_comments if is_coderabbit_walkthrough_comment(comment)), None)
     walkthrough_path: Path | None = None
@@ -1027,7 +1013,6 @@ def export_review_bundle(
         "",
         "## Context",
         "",
-        f"- Dispatch guidance: `context/00-dispatch-guidance.md`",
     ]
     if walkthrough_path:
         index_lines.append("- CodeRabbit walkthrough: `context/01-coderabbit-walkthrough.md`")

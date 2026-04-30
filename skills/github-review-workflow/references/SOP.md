@@ -30,7 +30,6 @@ Expected files:
 
 - `README.md`: local index for the bundle
 - `manifest.json`: machine-readable export metadata
-- `context/00-dispatch-guidance.md`: short context brief
 - `context/01-coderabbit-walkthrough.md`: optional top-level context
 - `todo/`: review items not yet handled
 - `nitpicks/`: CodeRabbit nitpick summary items, lower priority than `todo/`
@@ -185,7 +184,6 @@ near-duplicate workers. Never hand the whole queue to one worker.
 When delegating, give the worker only the context needed for that bounded work
 unit:
 
-- `context/00-dispatch-guidance.md`
 - `context/01-coderabbit-walkthrough.md` if relevant
 - the assigned review item files
 - specific implementation constraints discovered during triage
