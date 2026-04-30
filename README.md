@@ -24,7 +24,7 @@ Personal collection of [Agent Skills](https://agentskills.io) and SOPs for AI co
 | [stacked-diffs](skills/stacked-diffs/) | Break large changes into small, stacked PRs using vanilla git |
 | [agents-md](skills/agents-md/) | Create and maintain a concise AGENTS.md that routes agents to the repo's real sources of truth |
 | [execplan](skills/execplan/) | Write a self-contained execution plan for complex, multi-step implementation work |
-| [github-review-workflow](skills/github-review-workflow/) | Export a PR's inline review threads into a clean local queue for sequential triage and follow-through |
+| [github-review-workflow](skills/github-review-workflow/) | Export a PR's inline review threads and CodeRabbit nitpicks into clean local queues for triage and follow-through |
 
 ---
 

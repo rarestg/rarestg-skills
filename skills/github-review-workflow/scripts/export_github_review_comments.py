@@ -3,13 +3,15 @@
 Export clean GitHub PR review comments into local files under `GitHub Reviews/`
 in the current working project.
 
-The export intentionally treats inline review threads as the actionable queue and
-only saves the CodeRabbit walkthrough as optional context.
+The export intentionally treats inline review threads as the actionable queue,
+saves CodeRabbit walkthroughs as optional context, and exports CodeRabbit
+nitpick review-summary items into a separate lower-priority queue.
 """
 
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
@@ -118,18 +120,6 @@ query($threadId: ID!, $commentsCursor: String) {
 }
 """
 
-DISPATCH_GUIDANCE = """# Dispatch Guidance
-
-- Start with a fresh context.
-- Read this file, the assigned review item, `01-coderabbit-walkthrough.md` if present, and only the code needed to evaluate that item.
-- Reassess whether the comment has merit before editing.
-- If valid, implement the smallest defensible fix.
-- If not worth taking, make no code change and explain why.
-- Do not address any other review item.
-- Do not widen scope or touch files outside the assigned ownership unless the parent agent explicitly expands scope.
-- Preserve unrelated user changes in the worktree.
-"""
-
 OUT_ROOT_GITIGNORE = "*\n!.gitignore\n"
 LEGACY_OUT_ROOT_GITIGNORE = "*\n!.gitignore\n!SOP.md\n"
 REVIEW_ITEM_TOP_SECTION_END = "---"
@@ -139,6 +129,18 @@ WALKTHROUGH_BLOCK_PATTERN = re.compile(
 )
 WALKTHROUGH_TRIM_AFTER_PATTERN = re.compile(
     r"(?mi)^\s*##\s+Estimated Code Review Effort\b.*$"
+)
+DETAILS_TAG_PATTERN = re.compile(r"</?details\b[^>]*>", flags=re.I)
+DETAIL_SUMMARY_PATTERN = re.compile(
+    r"<summary\b[^>]*>(.*?)</summary>",
+    flags=re.S | re.I,
+)
+BLOCKQUOTE_WRAPPER_PATTERN = re.compile(
+    r"^\s*<blockquote\b[^>]*>\s*(.*?)\s*</blockquote>\s*$",
+    flags=re.S | re.I,
+)
+NITPICK_ITEM_START_PATTERN = re.compile(
+    r"(?m)^\s*`(?P<line_range>[^`]+)`:\s*(?P<title>.+?)\s*$"
 )
 
 
@@ -370,19 +372,63 @@ def slugify(text: str) -> str:
     return normalized or "review-item"
 
 
-def parse_review_item_thread_id(path: Path) -> str | None:
+def parse_review_item_metadata(path: Path) -> dict[str, str]:
     content = path.read_text(encoding="utf-8")
     top_section = content.split(f"\n{REVIEW_ITEM_TOP_SECTION_END}\n", 1)[0]
+    metadata: dict[str, str] = {}
 
     for line in top_section.splitlines():
-        if not line.startswith("Thread ID:"):
+        if ":" not in line:
             continue
-        _, value = line.split(":", 1)
-        thread_id = value.strip()
-        if thread_id:
-            return thread_id
+        key, value = line.split(":", 1)
+        metadata[key.strip()] = value.strip()
 
-    return None
+    return metadata
+
+
+def parse_review_item_thread_id(path: Path) -> str | None:
+    return parse_review_item_metadata(path).get("Thread ID") or None
+
+
+def nitpick_identity(
+    *,
+    review_id: str,
+    file_path: str,
+    line_range: str,
+    title: str,
+) -> str:
+    return "\0".join(
+        [
+            review_id.strip(),
+            file_path.strip(),
+            line_range.strip(),
+            title.strip(),
+        ]
+    )
+
+
+def nitpick_identity_from_metadata(metadata: dict[str, str]) -> str | None:
+    review_id = metadata.get("Review ID")
+    file_path = metadata.get("File")
+    line_range = metadata.get("Line Range")
+    title = metadata.get("Title")
+    if not all([review_id, file_path, line_range, title]):
+        return None
+    return nitpick_identity(
+        review_id=review_id or "",
+        file_path=file_path or "",
+        line_range=line_range or "",
+        title=title or "",
+    )
+
+
+def nitpick_identity_from_item(nitpick: dict[str, Any]) -> str:
+    return nitpick_identity(
+        review_id=nitpick["review_id"],
+        file_path=nitpick["path"],
+        line_range=nitpick["line_range"] or "n/a",
+        title=nitpick["title"],
+    )
 
 
 def discover_existing_thread_files(pr_dir: Path) -> dict[str, Path]:
@@ -400,6 +446,48 @@ def discover_existing_thread_files(pr_dir: Path) -> dict[str, Path]:
             if thread_id:
                 existing[thread_id] = path
     return existing
+
+
+def discover_existing_nitpick_files(pr_dir: Path) -> dict[str, Path]:
+    existing: dict[str, Path] = {}
+    for status in ("nitpicks", "done", "ignored"):
+        directory = pr_dir / status
+        if not directory.exists():
+            continue
+        for path in directory.glob("*.md"):
+            identity = nitpick_identity_from_metadata(parse_review_item_metadata(path))
+            if identity:
+                existing[identity] = path
+    return existing
+
+
+def review_item_filename(*, index: int, title: str, id_suffix: str) -> str:
+    title_slug = slugify(title)[:80]
+    return f"{index:03d}-{title_slug}--{id_suffix}.md"
+
+
+def render_review_item_document(
+    *,
+    heading: str,
+    pr: dict[str, Any],
+    title: str,
+    metadata_lines: list[str],
+    body: str,
+) -> str:
+    lines = [
+        heading,
+        "",
+        f"Title: {title}",
+        f"PR: #{pr['number']} — {pr['title']}",
+        f"PR URL: {pr['url']}",
+        *metadata_lines,
+        "",
+        REVIEW_ITEM_TOP_SECTION_END,
+        "",
+        body,
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def render_thread_file(
@@ -434,27 +522,23 @@ def render_thread_file(
         ).strip()
         body_sections.append(section)
 
-    lines = [
-        f"# Review Item {index:03d}",
-        "",
-        f"Title: {title}",
-        f"PR: #{pr['number']} — {pr['title']}",
-        f"PR URL: {pr['url']}",
-        f"File: {thread.get('path') or 'n/a'}",
-        f"Line: {thread.get('line') or thread.get('originalLine') or 'n/a'}",
-        f"Thread ID: {thread['id']}",
-        f"Primary Comment Database ID: {primary_comment_database_id}",
-        f"Discussion URL: {primary_comment['url'] if primary_comment else 'n/a'}",
-        f"Resolved On GitHub: {'yes' if thread['isResolved'] else 'no'}",
-        f"Outdated On GitHub: {'yes' if thread['isOutdated'] else 'no'}",
-        f"Thread Comments Truncated On Export: {'yes' if comments_truncated_on_export else 'no'}",
-        "",
-        "---",
-        "",
-        "\n\n".join(body_sections),
-        "",
-    ]
-    return "\n".join(lines)
+    return render_review_item_document(
+        heading=f"# Review Item {index:03d}",
+        pr=pr,
+        title=title,
+        metadata_lines=[
+            f"File: {thread.get('path') or 'n/a'}",
+            f"Line: {thread.get('line') or thread.get('originalLine') or 'n/a'}",
+            f"Thread ID: {thread['id']}",
+            f"Primary Comment Database ID: {primary_comment_database_id}",
+            f"Discussion URL: {primary_comment['url'] if primary_comment else 'n/a'}",
+            f"Resolved On GitHub: {'yes' if thread['isResolved'] else 'no'}",
+            f"Outdated On GitHub: {'yes' if thread['isOutdated'] else 'no'}",
+            "Thread Comments Truncated On Export: "
+            f"{'yes' if comments_truncated_on_export else 'no'}",
+        ],
+        body="\n\n".join(body_sections),
+    )
 
 
 def render_walkthrough_file(comment: dict[str, Any], pr: dict[str, Any]) -> str:
@@ -509,6 +593,195 @@ def is_coderabbit_walkthrough_comment(comment: dict[str, Any]) -> bool:
     return bool(re.match(r"^(?:#+\s*)?walkthrough\b", first_nonempty_line, flags=re.I))
 
 
+def top_level_detail_blocks(text: str) -> list[str]:
+    blocks: list[str] = []
+    stack_depth = 0
+    block_start: int | None = None
+
+    for match in DETAILS_TAG_PATTERN.finditer(text):
+        tag = match.group(0).lower()
+        if tag.startswith("</"):
+            if stack_depth == 0:
+                continue
+            stack_depth -= 1
+            if stack_depth == 0 and block_start is not None:
+                blocks.append(text[block_start : match.end()])
+                block_start = None
+            continue
+
+        if stack_depth == 0:
+            block_start = match.start()
+        stack_depth += 1
+
+    return blocks
+
+
+def parse_detail_block(block: str) -> tuple[str, str] | None:
+    summary_match = DETAIL_SUMMARY_PATTERN.search(block)
+    if not summary_match:
+        return None
+
+    close_index = block.lower().rfind("</details>")
+    if close_index == -1:
+        close_index = len(block)
+
+    return summary_match.group(1), block[summary_match.end() : close_index]
+
+
+def detail_summary_text(summary: str) -> str:
+    without_tags = re.sub(r"<[^>]+>", "", summary)
+    return html.unescape(re.sub(r"\s+", " ", without_tags)).strip()
+
+
+def unwrap_blockquote(content: str) -> str:
+    match = BLOCKQUOTE_WRAPPER_PATTERN.match(content)
+    if not match:
+        return content.strip()
+    return match.group(1).strip()
+
+
+def clean_inline_markdown(text: str) -> str:
+    cleaned = detail_summary_text(text)
+    wrappers = [
+        (r"^`(.+)`$", r"\1"),
+        (r"^\*\*(.+)\*\*$", r"\1"),
+        (r"^__(.+)__$", r"\1"),
+        (r"^_(.+)_$", r"\1"),
+    ]
+
+    previous = None
+    while previous != cleaned:
+        previous = cleaned
+        for pattern, replacement in wrappers:
+            cleaned = re.sub(pattern, replacement, cleaned).strip()
+
+    return cleaned
+
+
+def file_path_from_nitpick_summary(summary: str) -> str:
+    match = re.match(r"^(?P<path>.+?)\s+\(\d+\)\s*$", summary)
+    if match:
+        return match.group("path").strip()
+    return summary.strip() or "n/a"
+
+
+def first_line_from_range(line_range: str) -> int | None:
+    match = re.search(r"\d+", line_range)
+    if not match:
+        return None
+    return int(match.group(0))
+
+
+def extract_nitpick_items_from_file_section(
+    *,
+    review: dict[str, Any],
+    file_path: str,
+    file_body: str,
+    strip_ai_prompts: bool,
+) -> list[dict[str, Any]]:
+    starts = list(NITPICK_ITEM_START_PATTERN.finditer(file_body))
+    nitpicks: list[dict[str, Any]] = []
+    author = (review.get("author") or {}).get("login") or "unknown"
+
+    for item_index, match in enumerate(starts, start=1):
+        next_start = starts[item_index].start() if item_index < len(starts) else len(file_body)
+        raw_item = file_body[match.start() : next_start].strip()
+        text = sanitize_comment_text(
+            {
+                "body": raw_item,
+                "bodyText": None,
+                "author": {"login": "coderabbitai"},
+            },
+            strip_ai_prompts=strip_ai_prompts,
+        )
+        if not text:
+            continue
+
+        line_range = clean_inline_markdown(match.group("line_range"))
+        title = clean_inline_markdown(match.group("title"))
+        nitpicks.append(
+            {
+                "review_id": review["id"],
+                "review_url": review["url"],
+                "author": author,
+                "created_at": review.get("submittedAt"),
+                "path": file_path,
+                "line_range": line_range,
+                "line": first_line_from_range(line_range),
+                "title": title or f"Nitpick {item_index:03d}",
+                "body": text,
+            }
+        )
+
+    return nitpicks
+
+
+def extract_coderabbit_nitpicks(
+    review: dict[str, Any],
+    *,
+    strip_ai_prompts: bool,
+) -> list[dict[str, Any]]:
+    author_login = (review.get("author") or {}).get("login")
+    if author_login != "coderabbitai":
+        return []
+
+    raw_body = review.get("body") or ""
+    if "Nitpick comments" not in raw_body:
+        return []
+
+    nitpicks: list[dict[str, Any]] = []
+
+    for block in top_level_detail_blocks(raw_body):
+        parsed = parse_detail_block(block)
+        if not parsed:
+            continue
+
+        summary, content = parsed
+        if "nitpick comments" not in detail_summary_text(summary).lower():
+            continue
+
+        for file_block in top_level_detail_blocks(unwrap_blockquote(content)):
+            file_parsed = parse_detail_block(file_block)
+            if not file_parsed:
+                continue
+
+            file_summary, file_content = file_parsed
+            file_path = file_path_from_nitpick_summary(detail_summary_text(file_summary))
+            nitpicks.extend(
+                extract_nitpick_items_from_file_section(
+                    review=review,
+                    file_path=file_path,
+                    file_body=unwrap_blockquote(file_content),
+                    strip_ai_prompts=strip_ai_prompts,
+                )
+            )
+
+    return nitpicks
+
+
+def render_nitpick_file(
+    *,
+    index: int,
+    pr: dict[str, Any],
+    nitpick: dict[str, Any],
+) -> str:
+    return render_review_item_document(
+        heading=f"# Nitpick Item {index:03d}",
+        pr=pr,
+        title=nitpick["title"],
+        metadata_lines=[
+            f"File: {nitpick['path']}",
+            f"Line: {nitpick['line'] or 'n/a'}",
+            f"Line Range: {nitpick['line_range'] or 'n/a'}",
+            f"Review ID: {nitpick['review_id']}",
+            f"Review URL: {nitpick['review_url']}",
+            f"Author: {nitpick['author']}",
+            f"Created: {nitpick['created_at'] or 'n/a'}",
+        ],
+        body=nitpick["body"].strip(),
+    )
+
+
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content.rstrip() + "\n", encoding="utf-8")
@@ -546,15 +819,15 @@ def export_review_bundle(
     pr_dir = out_root / f"pr-{pr['number']:04d}-{pr_slug}"
     context_dir = pr_dir / "context"
     todo_dir = pr_dir / "todo"
+    nitpicks_dir = pr_dir / "nitpicks"
     done_dir = pr_dir / "done"
     ignored_dir = pr_dir / "ignored"
 
     context_dir.mkdir(parents=True, exist_ok=True)
     todo_dir.mkdir(parents=True, exist_ok=True)
+    nitpicks_dir.mkdir(parents=True, exist_ok=True)
     done_dir.mkdir(parents=True, exist_ok=True)
     ignored_dir.mkdir(parents=True, exist_ok=True)
-
-    write_text(context_dir / "00-dispatch-guidance.md", DISPATCH_GUIDANCE)
 
     top_level_comments = payload["comments"]
     walkthrough_comment = next((comment for comment in top_level_comments if is_coderabbit_walkthrough_comment(comment)), None)
@@ -597,8 +870,11 @@ def export_review_bundle(
             for comment in comments
         )
         title = extract_comment_title(combined_text, fallback=f"Review item {index:03d}")
-        slug = slugify(title)[:80]
-        filename = f"{index:03d}-{slug}--{thread['id']}.md"
+        filename = review_item_filename(
+            index=index,
+            title=title,
+            id_suffix=thread["id"],
+        )
 
         existing_path = existing_thread_files.get(thread["id"])
         if existing_path is None:
@@ -657,6 +933,7 @@ def export_review_bundle(
             )
 
     review_summaries = []
+    nitpick_items: list[dict[str, Any]] = []
     for review in payload["reviews"]:
         text = sanitize_comment_text(review)
         first_line = text.splitlines()[0] if text else ""
@@ -668,12 +945,60 @@ def export_review_bundle(
                 "first_line": first_line,
             }
         )
+        nitpick_items.extend(
+            extract_coderabbit_nitpicks(
+                review,
+                strip_ai_prompts=strip_ai_prompts,
+            )
+        )
+
+    existing_nitpick_files = discover_existing_nitpick_files(pr_dir)
+    nitpick_manifest_items: list[dict[str, Any]] = []
+    for index, nitpick in enumerate(nitpick_items, start=1):
+        review_id_slug = slugify(nitpick["review_id"])[:40]
+        filename = review_item_filename(
+            index=index,
+            title=nitpick["title"],
+            id_suffix=review_id_slug,
+        )
+        existing_path = existing_nitpick_files.get(nitpick_identity_from_item(nitpick))
+        if existing_path is None:
+            target_directory = nitpicks_dir
+            target_path = target_directory / filename
+        else:
+            target_directory = existing_path.parent
+            target_path = target_directory / filename
+            if existing_path != target_path and existing_path.exists():
+                existing_path.unlink()
+
+        write_text(
+            target_path,
+            render_nitpick_file(
+                index=index,
+                pr=pr,
+                nitpick=nitpick,
+            ),
+        )
+
+        nitpick_manifest_items.append(
+            {
+                "review_id": nitpick["review_id"],
+                "title": nitpick["title"],
+                "path": nitpick["path"],
+                "line": nitpick["line"],
+                "line_range": nitpick["line_range"],
+                "status_folder": target_directory.name,
+                "file": str(target_path.relative_to(pr_dir)),
+                "review_url": nitpick["review_url"],
+            }
+        )
 
     manifest = {
         "generated_at": datetime.now(UTC).isoformat(),
         "pull_request": pr,
         "walkthrough_file": str(walkthrough_path.relative_to(pr_dir)) if walkthrough_path else None,
         "actionable_threads": manifest_items,
+        "nitpicks": nitpick_manifest_items,
         "review_summaries": review_summaries,
     }
     write_text(pr_dir / "manifest.json", json.dumps(manifest, indent=2))
@@ -688,7 +1013,6 @@ def export_review_bundle(
         "",
         "## Context",
         "",
-        f"- Dispatch guidance: `context/00-dispatch-guidance.md`",
     ]
     if walkthrough_path:
         index_lines.append("- CodeRabbit walkthrough: `context/01-coderabbit-walkthrough.md`")
@@ -701,7 +1025,7 @@ def export_review_bundle(
             "## Actionable Inline Review Threads",
             "",
             f"- Exported thread files: {len(manifest_items)}",
-            f"- Review summaries intentionally not exported as action items: {len(review_summaries)}",
+            f"- Review summaries retained as metadata: {len(review_summaries)}",
             "",
         ]
     )
@@ -717,13 +1041,38 @@ def export_review_bundle(
     index_lines.extend(
         [
             "",
+            "## CodeRabbit Nitpicks",
+            "",
+            f"- Exported nitpick files: {len(nitpick_manifest_items)}",
+            "",
+        ]
+    )
+
+    for item in nitpick_manifest_items:
+        index_lines.append(
+            f"- `{item['file']}` — {item['title']} ({item['path']}:{item['line_range'] or 'n/a'})"
+        )
+
+    if not nitpick_manifest_items:
+        index_lines.append("- No CodeRabbit nitpick review-summary items found.")
+
+    index_lines.extend(
+        [
+            "",
             "## Notes",
             "",
             "- The actionable queue comes from `reviewThreads.comments`, not `reviews`.",
-            "- Re-running export preserves existing `todo/`, `done/`, and "
-            "`ignored/` placement by thread id.",
-            "- Use the bundled follow-up script after local audit to post the required GitHub follow-up.",
-            "- Move files from `todo/` to `done/` or `ignored/` only after follow-through is complete.",
+            "- CodeRabbit nitpicks come from structured `reviews` summary "
+            "sections and are exported separately from actionable inline threads.",
+            "- Re-running export preserves existing `todo/`, `nitpicks/`, "
+            "`done/`, and `ignored/` placement for recognized items.",
+            "- Existing local status files can remain on disk even when their "
+            "GitHub items are not included by the current export filter.",
+            "- Default workflow posts review-thread replies after local audit, "
+            "but does not resolve threads, commit, push, or create PRs unless "
+            "explicitly requested.",
+            "- Move files from `todo/` to `done/` or `ignored/` only after "
+            "local audit and the required review-thread reply.",
         ]
     )
 
@@ -748,10 +1097,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Include already-resolved inline review threads in the export",
     )
-    parser.add_argument(
+    prompt_group = parser.add_mutually_exclusive_group()
+    prompt_group.add_argument(
         "--strip-ai-prompts",
+        dest="strip_ai_prompts",
         action="store_true",
-        help="Remove embedded AI-agent prompt sections from exported review item bodies",
+        default=True,
+        help="Remove embedded AI-agent prompt sections from exported review item bodies (default)",
+    )
+    prompt_group.add_argument(
+        "--include-ai-prompts",
+        dest="strip_ai_prompts",
+        action="store_false",
+        help="Preserve embedded AI-agent prompt sections in exported review item bodies",
     )
     return parser
 
