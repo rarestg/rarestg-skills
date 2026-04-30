@@ -41,7 +41,6 @@ Read the full bundle before editing:
 
 - `$SKILL_DIR/references/SOP.md`
 - `GitHub Reviews/pr-<number>-<slug>/README.md`
-- `GitHub Reviews/pr-<number>-<slug>/manifest.json`
 - `GitHub Reviews/pr-<number>-<slug>/context/00-dispatch-guidance.md`
 - `GitHub Reviews/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
 - all files in `GitHub Reviews/pr-<number>-<slug>/todo/`
