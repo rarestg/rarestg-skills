@@ -16,23 +16,11 @@ The workflow exists to avoid these failure modes:
 - blindly implementing every bot suggestion
 - pushing partial fixes that repeatedly retrigger review automation
 
-## Source Of Truth
+## Queues
 
-When exporting review data:
-
-- use `pullRequest.reviewThreads[].comments[]` as the actionable queue
-- use `pullRequest.comments[]` only for optional top-level context such as a
-  CodeRabbit walkthrough
-- treat `pullRequest.reviews[]` as summary metadata, except structured
-  CodeRabbit nitpick sections exported separately to `nitpicks/`
-- prefer `bodyText` by default
-- use raw `body` when structural Markdown matters and `bodyText` flattens away
-  important boundaries; currently this is needed for CodeRabbit walkthrough
-  and nitpick detail blocks
-
-Review-summary wrappers such as `Actionable comments posted: 2` are not actionable items.
-CodeRabbit nitpick details may contain concrete file/line suggestions, but they
-remain lower-priority than inline review threads.
+Inline review threads are the main action queue. CodeRabbit nitpicks are
+exported separately, triaged up front, and lower priority by default. Summary
+review wrappers are context, not work items.
 
 ## Bundle Layout
 
@@ -46,25 +34,14 @@ Expected files:
 - `context/01-coderabbit-walkthrough.md`: optional top-level context
 - `todo/`: review items not yet handled
 - `nitpicks/`: CodeRabbit nitpick summary items, lower priority than `todo/`
-- `done/`: accepted, implemented locally, and audited; for review-thread
-  items, the GitHub reply has also been posted
-- `ignored/`: not taken locally after merit, scope, or audit review, with a
-  GitHub reply posted when the item has a review thread
+- `done/`: accepted, locally implemented, audited, and replied to when
+  thread-backed
+- `ignored/`: declined after merit, scope, or audit review, and replied to when
+  thread-backed
 
-Each review item file represents one review thread. It includes the IDs needed
-for optional GitHub follow-through:
-
-- `PR URL`
-- `Thread ID`
-- `Primary Comment Database ID` when GitHub provides it
-- `Discussion URL`
-
-Do not delete review files. The folder path is the status record. Create
-status folders as needed.
-
-Nitpick files come from CodeRabbit review-summary details, not GitHub review
-threads. They include a `Review URL`, but not a `Thread ID`, and the bundled
-follow-up script is not used for them.
+Review item files include the IDs needed for follow-up replies. Nitpick files
+are not GitHub review threads and must not use the bundled follow-up script. Do
+not delete review files; folder placement is the status record.
 
 ## Export
 
@@ -84,17 +61,8 @@ Useful flags:
 - `--include-resolved` includes already-resolved inline review threads
 - `--out-root <path>` writes bundles somewhere other than `GitHub Reviews/`
 
-The bundled exporter auto-creates `GitHub Reviews/` and seeds
-`GitHub Reviews/.gitignore` when needed.
-
-Re-running the exporter is safe. It preserves existing recognized status
-placement for inline threads by `Thread ID`, and for nitpicks by `Review ID`,
-file, line range, and title. Newly discovered inline threads land in `todo/`;
-newly discovered nitpicks land in `nitpicks/`.
-The exporter does not delete existing local review files. If the current export
-filter excludes a thread, for example because it is already resolved and
-`--include-resolved` was not used, its previous local status file may still
-remain on disk even though it is absent from the new README and manifest.
+Re-running the exporter preserves recognized local status placement and adds
+newly discovered inline threads to `todo/` and nitpicks to `nitpicks/`.
 
 After export, open:
 
@@ -131,25 +99,6 @@ the local base for fixes, not to update remote branches by default. Deepen the
 check only when the current branch, PR head, or intended fix branch is
 ambiguous.
 
-Useful example commands:
-
-```bash
-gh pr view <number-or-url> --json number,headRefName,baseRefName,title
-gh pr list --state open --json number,headRefName,baseRefName,title
-```
-
-If the PR may be stacked, walk from the reviewed PR's head branch:
-
-- Find open PRs where `baseRefName == <current-head>`.
-- If exactly one child exists, set `<current-head>` to that child's
-  `headRefName` and continue.
-- If no child exists, `<current-head>` is the current top-of-stack head.
-- If multiple children exist or the chain is otherwise ambiguous, stop and ask
-  the user which branch should receive the fix.
-
-If the final top-of-stack head differs from the reviewed PR's head, the
-reviewed PR is not top-of-stack.
-
 Default behavior keeps code changes local:
 
 - do not commit, push, create PRs, resolve GitHub threads, or update the
@@ -162,15 +111,14 @@ Default behavior keeps code changes local:
 - if the correct local base is ambiguous, stop and ask the user which branch or
   worktree should receive the fix
 
-This avoids silently changing a lower PR branch or starting a remote
-cat-and-mouse review loop. The final handoff should report the current branch
-and the likely stacked-PR base if the user later wants one.
+If the PR appears stacked, identify the likely top-of-stack base and report it
+in the final handoff.
 
 ## Review Loop
 
 Handle `todo/` before `nitpicks/` unless the user explicitly asks otherwise.
 Use the initial triage to choose bounded work units: one review item, or a
-small group of related items that share one implementation fix.
+small related group.
 
 For each work unit:
 
@@ -180,7 +128,8 @@ For each work unit:
 4. Delegate only if the work unit is large, complex, multi-file, risky, or
    benefits from isolated investigation.
 5. If delegating, give the worker only the bounded work unit, relevant context
-   files, and relevant item files. Do not hand over the full queue.
+   files, relevant item files, and implementation constraints. Do not hand over
+   the full queue.
 6. Audit the final diff yourself, including worker output.
 7. Capture lightweight local evidence before posting: relevant changed files,
    verification run, `git status --short`, and enough `git diff -- <files>`
@@ -219,53 +168,23 @@ GitHub review threads:
 
 ## Merit Gate
 
-Default posture: do not implement a comment unless it improves correctness,
-maintainability, accessibility, safety, or developer clarity with proportional
-complexity.
+Take comments that improve correctness, safety, accessibility, maintainability,
+or factual clarity with proportional complexity. Decline stylistic churn,
+speculative abstractions, defensive code without local evidence, renames that do
+not clarify, and tests that only restate the implementation. When in doubt,
+prefer the simpler change or no change.
 
-Bias against:
-
-- premature abstractions
-- defensive code for hypothetical failures with no local evidence
-- helpers or files that centralize logic still used in one place
-- renames that add words but not clarity
-- tests that only restate the implementation
-- comments that mostly create stylistic churn
-
-Bias toward:
-
-- concrete bug fixes
-- validation at trust boundaries
-- fixes for already observed regressions
-- low-complexity accessibility fixes
-- documentation fixes that remove factual contradictions
-
-When in doubt, prefer the simpler change or no change.
-
-## Delegation Granularity
+## Delegation
 
 The orchestrator owns the queue. Workers are optional and should be used only
-when the overhead is justified.
+when overhead is justified: nontrivial investigation, several files, meaningful
+test design, risky changes, or several comments pointing to one shared issue.
+Handle typo, docs, naming, simple correctness, simple test updates, mechanical
+edits, and low-merit suggestions directly.
 
-Delegate when:
-
-- a fix touches several files or subsystems
-- the correct approach requires nontrivial investigation
-- tests need meaningful design or repair
-- several comments point to one shared implementation issue
-- the change is risky enough to benefit from isolated implementation
-
-Do not delegate:
-
-- typo, docs, naming, or comment-only fixes
-- one-line correctness fixes the orchestrator can safely make
-- simple test expectation updates
-- purely mechanical edits
-- ignored or obviously low-merit suggestions
-
-A delegated work unit should be small enough to review completely, but large
+A delegated work unit should be small enough to review completely and large
 enough to avoid duplicated setup cost. Prefer one related group over several
-nearly identical workers. Never hand the whole queue to one worker.
+near-duplicate workers. Never hand the whole queue to one worker.
 
 When delegating, give the worker only the context needed for that bounded work
 unit:
@@ -301,27 +220,18 @@ interfere with the user's commit plan.
 Do not resolve review threads while fixes exist only in the working tree unless
 the user explicitly requests resolution.
 
-For accepted items fixed locally but not pushed:
+Post with:
 
 ```bash
 python3 "$SKILL_DIR/scripts/post_github_review_followup.py" <review-item-file> \
-  --reply 'Addressed locally but not pushed: <summary>'
+  --reply '<accurate reply>'
 ```
 
-For accepted items available in a follow-up PR that the user explicitly asked
-you to create:
+Reply templates:
 
-```bash
-python3 "$SKILL_DIR/scripts/post_github_review_followup.py" <review-item-file> \
-  --reply 'Addressed in <stacked-fix-pr-url>: <summary>'
-```
-
-For ignored items:
-
-```bash
-python3 "$SKILL_DIR/scripts/post_github_review_followup.py" <review-item-file> \
-  --reply 'Not taking this change: <reason>'
-```
+- accepted locally: `Addressed locally but not pushed: <summary>`
+- accepted in an explicitly requested follow-up PR: `Addressed in <pr-url>: <summary>`
+- ignored: `Not taking this change: <reason>`
 
 Add `--resolve` only when the user explicitly requested thread resolution and
 the fix or final disposition is visible on GitHub in the intended branch or PR.
@@ -331,14 +241,6 @@ Useful flags:
 - `--dry-run` to show the target commands without mutating GitHub
 - `--show-metadata` to inspect the parsed IDs
 - `--reply-file -` to read a multi-line reply from stdin
-
-If a reply succeeds but resolving fails, do not post a duplicate reply. Re-run
-the follow-up script with `--resolve` only after fixing the underlying
-GitHub/auth issue.
-
-Use `Discussion URL` for manual UI spot-checking when present. Use `Thread ID`
-for resolve calls. `Primary Comment Database ID` is only needed for REST
-replies and may be unavailable on some exported items.
 
 ## Final Handoff
 
@@ -357,11 +259,3 @@ End with a compact local handoff:
 
 Do not create the stacked branch, create a PR, push, or resolve threads unless
 the user explicitly asks for that follow-up.
-
-## Practical Notes
-
-- CodeRabbit usually places walkthrough context in `comments`, summary metadata
-  in `reviews`, and actionable inline comments in `reviewThreads`
-- Cursor and Codex generally follow the same pattern
-- The generated dispatch guidance is task context, not a second source of
-  policy; this SOP is the canonical procedure

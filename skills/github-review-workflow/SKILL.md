@@ -23,21 +23,9 @@ orchestration workflow in `references/SOP.md`.
 - `python3` available in the shell
 - the current working directory is the project that owns the PR
 
-## Script Path
-
-Run bundled scripts from this skill directory, not from the project root.
-Set `SKILL_DIR` to the installed or repo-local path for this skill.
-
-Examples:
-
-```bash
-python3 "$SKILL_DIR/scripts/export_github_review_comments.py" <pr-url>
-python3 "$SKILL_DIR/scripts/post_github_review_followup.py" <review-item-file> ...
-```
-
 ## Export
 
-Run:
+Set `SKILL_DIR` to this skill's installed or repo-local path, then run:
 
 ```bash
 python3 "$SKILL_DIR/scripts/export_github_review_comments.py" <pr-url>
@@ -49,7 +37,7 @@ Useful export flags:
 - `--include-ai-prompts` to preserve embedded AI-agent prompt sections; they
   are stripped by default
 
-Then open:
+Read the full bundle before editing:
 
 - `$SKILL_DIR/references/SOP.md`
 - `GitHub Reviews/pr-<number>-<slug>/README.md`
@@ -61,23 +49,19 @@ Then open:
   triage them as lower-priority local-only items unless the user asked to
   handle them now
 
-## Non-Negotiables
+## Defaults
 
 - Keep code changes local by default: do not commit, push, create PRs, resolve
-  GitHub threads, or update the reviewed PR branch unless explicitly requested.
-- Review-thread replies are the one default GitHub mutation; commits, pushes,
-  PR creation, branch updates, and thread resolution remain opt-in.
+  GitHub threads, update the reviewed PR branch, or switch branches unless
+  explicitly requested or confirmed.
+- Review-thread replies are the one default GitHub mutation.
 - For thread-backed `todo/` items, post the GitHub reply after local audit and
   before moving the item to `done/` or `ignored/`; if the fix is unpushed, say so
   in the reply.
-- Read the full exported bundle before editing: README, manifest, dispatch
-  guidance, walkthrough if present, all `todo/` items, and all `nitpicks/`
-  items if present.
-- Triage up front into provisionally accepted, provisionally ignored, and
-  grouped related items.
+- Triage up front: judge merit, group related items, detect conflicts or
+  ordering, and decide what is worth delegating.
 - Do a lightweight stack/base check before editing; deepen it only when the
   current branch, PR head, or intended fix branch is ambiguous.
-- Do a local merit pass before changing code.
 - The orchestrator owns the queue. Implement small, obvious fixes directly.
 - Delegate only bounded work units that justify worker overhead. A work unit
   may be one item or a small related group, never the whole queue.
