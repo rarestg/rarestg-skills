@@ -11,6 +11,7 @@ nitpick review-summary items into a separate lower-priority queue.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import re
@@ -135,6 +136,8 @@ DETAIL_SUMMARY_PATTERN = re.compile(
     r"<summary\b[^>]*>(.*?)</summary>",
     flags=re.S | re.I,
 )
+FILE_SECTION_HEADING_PATTERN = re.compile(r"^(?P<path>.+?)\s+\(\d+\)\s*$")
+MARKDOWN_LINK_PATTERN = re.compile(r"^\[(?P<label>[^\]]+)\]\([^)]+\)$")
 BLOCKQUOTE_WRAPPER_PATTERN = re.compile(
     r"^\s*<blockquote\b[^>]*>\s*(.*?)\s*</blockquote>\s*$",
     flags=re.S | re.I,
@@ -396,15 +399,22 @@ def nitpick_identity(
     file_path: str,
     line_range: str,
     title: str,
+    body_hash: str | None,
 ) -> str:
-    return "\0".join(
-        [
-            review_id.strip(),
-            file_path.strip(),
-            line_range.strip(),
-            title.strip(),
-        ]
-    )
+    fields = [
+        review_id.strip(),
+        file_path.strip(),
+        line_range.strip(),
+        title.strip(),
+    ]
+    if metadata_value_present(body_hash):
+        fields.append((body_hash or "").strip())
+    return "\0".join(fields)
+
+
+def nitpick_body_hash(body: str) -> str:
+    normalized = re.sub(r"\s+", " ", body).strip()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def nitpick_identity_from_metadata(metadata: dict[str, str]) -> str | None:
@@ -412,6 +422,7 @@ def nitpick_identity_from_metadata(metadata: dict[str, str]) -> str | None:
     file_path = metadata.get("File")
     line_range = metadata.get("Line Range")
     title = metadata.get("Title")
+    body_hash = metadata.get("Body Hash")
     if not all([review_id, file_path, line_range, title]):
         return None
     return nitpick_identity(
@@ -419,6 +430,7 @@ def nitpick_identity_from_metadata(metadata: dict[str, str]) -> str | None:
         file_path=file_path or "",
         line_range=line_range or "",
         title=title or "",
+        body_hash=body_hash,
     )
 
 
@@ -428,6 +440,17 @@ def nitpick_identity_from_item(nitpick: dict[str, Any]) -> str:
         file_path=nitpick["path"],
         line_range=nitpick["line_range"] or "n/a",
         title=nitpick["title"],
+        body_hash=nitpick["body_hash"],
+    )
+
+
+def legacy_nitpick_identity_from_item(nitpick: dict[str, Any]) -> str:
+    return nitpick_identity(
+        review_id=nitpick["review_id"],
+        file_path=nitpick["path"],
+        line_range=nitpick["line_range"] or "n/a",
+        title=nitpick["title"],
+        body_hash=None,
     )
 
 
@@ -450,6 +473,7 @@ def discover_existing_thread_files(pr_dir: Path) -> dict[str, Path]:
 
 def discover_existing_nitpick_files(pr_dir: Path) -> dict[str, Path]:
     existing: dict[str, Path] = {}
+    duplicate_identities: set[str] = set()
     for status in ("nitpicks", "done", "ignored"):
         directory = pr_dir / status
         if not directory.exists():
@@ -457,7 +481,11 @@ def discover_existing_nitpick_files(pr_dir: Path) -> dict[str, Path]:
         for path in directory.glob("*.md"):
             identity = nitpick_identity_from_metadata(parse_review_item_metadata(path))
             if identity:
+                if identity in existing:
+                    duplicate_identities.add(identity)
                 existing[identity] = path
+    for identity in duplicate_identities:
+        existing.pop(identity, None)
     return existing
 
 
@@ -635,9 +663,12 @@ def detail_summary_text(summary: str) -> str:
 
 def unwrap_blockquote(content: str) -> str:
     match = BLOCKQUOTE_WRAPPER_PATTERN.match(content)
-    if not match:
-        return content.strip()
-    return match.group(1).strip()
+    stripped = match.group(1).strip() if match else content.strip()
+    lines = stripped.splitlines()
+    nonempty_lines = [line for line in lines if line.strip()]
+    if nonempty_lines and all(line.lstrip().startswith(">") for line in nonempty_lines):
+        return "\n".join(re.sub(r"^\s*>\s?", "", line) for line in lines).strip()
+    return stripped
 
 
 def clean_inline_markdown(text: str) -> str:
@@ -659,10 +690,52 @@ def clean_inline_markdown(text: str) -> str:
 
 
 def file_path_from_nitpick_summary(summary: str) -> str:
-    match = re.match(r"^(?P<path>.+?)\s+\(\d+\)\s*$", summary)
+    cleaned_summary = clean_inline_markdown(summary)
+    match = FILE_SECTION_HEADING_PATTERN.match(cleaned_summary)
     if match:
-        return match.group("path").strip()
-    return summary.strip() or "n/a"
+        return normalize_nitpick_file_path(match.group("path"))
+    return normalize_nitpick_file_path(cleaned_summary) or "n/a"
+
+
+def normalize_nitpick_file_path(path: str) -> str:
+    cleaned = clean_inline_markdown(path)
+    link_match = MARKDOWN_LINK_PATTERN.match(cleaned)
+    if link_match:
+        cleaned = link_match.group("label").strip()
+    return clean_inline_markdown(cleaned).strip()
+
+
+def parse_blockquoted_nitpick_file_sections(content: str) -> list[tuple[str, str]]:
+    sections: list[tuple[str, str]] = []
+    current_summary: str | None = None
+    current_lines: list[str] = []
+
+    for line in unwrap_blockquote(content).splitlines():
+        summary = clean_inline_markdown(line.strip())
+        if FILE_SECTION_HEADING_PATTERN.match(summary):
+            if current_summary is not None:
+                sections.append(
+                    (
+                        file_path_from_nitpick_summary(current_summary),
+                        "\n".join(current_lines).strip(),
+                    )
+                )
+            current_summary = summary
+            current_lines = []
+            continue
+
+        if current_summary is not None:
+            current_lines.append(line)
+
+    if current_summary is not None:
+        sections.append(
+            (
+                file_path_from_nitpick_summary(current_summary),
+                "\n".join(current_lines).strip(),
+            )
+        )
+
+    return [(file_path, file_body) for file_path, file_body in sections if file_body]
 
 
 def first_line_from_range(line_range: str) -> int | None:
@@ -710,6 +783,7 @@ def extract_nitpick_items_from_file_section(
                 "line": first_line_from_range(line_range),
                 "title": title or f"Nitpick {item_index:03d}",
                 "body": text,
+                "body_hash": nitpick_body_hash(text),
             }
         )
 
@@ -726,7 +800,7 @@ def extract_coderabbit_nitpicks(
         return []
 
     raw_body = review.get("body") or ""
-    if "Nitpick comments" not in raw_body:
+    if "nitpick comments" not in raw_body.lower():
         return []
 
     nitpicks: list[dict[str, Any]] = []
@@ -740,7 +814,9 @@ def extract_coderabbit_nitpicks(
         if "nitpick comments" not in detail_summary_text(summary).lower():
             continue
 
-        for file_block in top_level_detail_blocks(unwrap_blockquote(content)):
+        unwrapped_content = unwrap_blockquote(content)
+        file_blocks = top_level_detail_blocks(unwrapped_content)
+        for file_block in file_blocks:
             file_parsed = parse_detail_block(file_block)
             if not file_parsed:
                 continue
@@ -752,6 +828,18 @@ def extract_coderabbit_nitpicks(
                     review=review,
                     file_path=file_path,
                     file_body=unwrap_blockquote(file_content),
+                    strip_ai_prompts=strip_ai_prompts,
+                )
+            )
+        if file_blocks:
+            continue
+
+        for file_path, file_content in parse_blockquoted_nitpick_file_sections(unwrapped_content):
+            nitpicks.extend(
+                extract_nitpick_items_from_file_section(
+                    review=review,
+                    file_path=file_path,
+                    file_body=file_content,
                     strip_ai_prompts=strip_ai_prompts,
                 )
             )
@@ -774,6 +862,7 @@ def render_nitpick_file(
             f"Line: {nitpick['line'] or 'n/a'}",
             f"Line Range: {nitpick['line_range'] or 'n/a'}",
             f"Review ID: {nitpick['review_id']}",
+            f"Body Hash: {nitpick['body_hash']}",
             f"Review URL: {nitpick['review_url']}",
             f"Author: {nitpick['author']}",
             f"Created: {nitpick['created_at'] or 'n/a'}",
@@ -961,7 +1050,9 @@ def export_review_bundle(
             title=nitpick["title"],
             id_suffix=review_id_slug,
         )
-        existing_path = existing_nitpick_files.get(nitpick_identity_from_item(nitpick))
+        existing_path = existing_nitpick_files.get(
+            nitpick_identity_from_item(nitpick)
+        ) or existing_nitpick_files.get(legacy_nitpick_identity_from_item(nitpick))
         if existing_path is None:
             target_directory = nitpicks_dir
             target_path = target_directory / filename
@@ -987,6 +1078,7 @@ def export_review_bundle(
                 "path": nitpick["path"],
                 "line": nitpick["line"],
                 "line_range": nitpick["line_range"],
+                "body_hash": nitpick["body_hash"],
                 "status_folder": target_directory.name,
                 "file": str(target_path.relative_to(pr_dir)),
                 "review_url": nitpick["review_url"],
