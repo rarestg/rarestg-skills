@@ -35,7 +35,8 @@ Starting with the PR that targets `main`:
 
 1. Merge it: `gh pr merge <number> --merge`
 2. For each next PR in the chain:
-   a. Re-target to `main` with the REST API:
+   a. Inspect its current base. If GitHub already re-targeted it to `main`,
+      continue. Otherwise, re-target it to `main` with the REST API:
 
       ```bash
       repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
@@ -58,6 +59,12 @@ Starting with the PR that targets `main`:
 
 Use `--merge`, not `--squash` or `--rebase`, to preserve commit history unless
 the user requests otherwise.
+
+Do not pass `--delete-branch` to `gh pr merge` for stacked PRs. If the repo is
+configured to delete merged branches, let GitHub do that server-side. A local
+CLI-driven branch deletion can remove the base branch before GitHub re-targets
+dependent PRs, causing the next PR in the stack to close instead of retargeting
+to `main`.
 
 Prefer the REST retarget command above instead of
 `gh pr edit <number> --base main`. GitHub CLI 2.45.0 can route `gh pr edit`
