@@ -269,17 +269,24 @@ After creating the new top-of-stack PR, attach its URL and post:
 
 ```bash
 python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
+  --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr> \
+  --dry-run
+
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
   --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr>
 ```
 
 Useful queue commands:
 
-- `list [--status pending|posting|failed|move_pending|move_failed|posted]`
+- `list [--status pending|posting|failed|move_pending|move_failed|posted] [--source-pr <number>] [--bundle <path>] [--draft-id <id>] [--json]`
 - `show <draft-id>`
+- `preview <draft-id> [--fix-pr-url <url>]`
 - `set-fix-pr <draft-id> <fix-pr-url>`
-- `set-fix-pr --all-pending-fixed <fix-pr-url>`
+- `set-fix-pr --all-pending-fixed <fix-pr-url> --source-pr <number>`
 - `post <draft-id> [--dry-run]`
-- `post-pending [--fix-pr-url <fix-pr-url>] [--dry-run]`
+- `post-pending [--source-pr <number>|--bundle <path>|--draft-id <id>] [--fix-pr-url <fix-pr-url>] [--dry-run]`
 - `recover-posting <draft-id> --posted-reply-url <url> [--dry-run]`
 - `recover-posting <draft-id> --no-reply-posted [--dry-run]`
 

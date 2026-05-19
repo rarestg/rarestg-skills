@@ -88,6 +88,12 @@ replies:
 
 ```bash
 python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
+  --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr> \
+  --dry-run
+
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
   --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr>
 ```
 
@@ -96,7 +102,11 @@ Declined comments can use the same queue:
 ```bash
 python3 "$SKILL_DIR/scripts/review_reply_queue.py" add-declined <review-item-file> \
   --reason '<reason>'
-python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
+  --dry-run
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number>
 ```
 
 Use `post_github_review_followup.py` only as a direct single-item escape hatch.

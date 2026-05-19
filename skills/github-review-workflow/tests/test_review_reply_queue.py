@@ -68,6 +68,34 @@ class ReviewReplyQueueTests(unittest.TestCase):
     def load_draft_json(self, draft_id: str) -> dict:
         return json.loads((self.out_root / "reply-queue" / f"{draft_id}.json").read_text())
 
+    def make_review_item(
+        self,
+        *,
+        pr_number: int,
+        thread_id: str,
+        database_id: str,
+    ) -> Path:
+        bundle = self.out_root / f"pr-{pr_number:04d}-example-pr"
+        todo_dir = bundle / "todo"
+        todo_dir.mkdir(parents=True, exist_ok=True)
+        (bundle / "done").mkdir(exist_ok=True)
+        (bundle / "ignored").mkdir(exist_ok=True)
+        item = todo_dir / f"001-prefer-helper--{thread_id}.md"
+        item.write_text(
+            review_item_text(
+                pr_number=pr_number,
+                thread_id=thread_id,
+                database_id=database_id,
+            ),
+            encoding="utf-8",
+        )
+        return item
+
+    def run_queue_command(self, *argv: str) -> int:
+        parser = queue.build_parser()
+        args = parser.parse_args(["--out-root", str(self.out_root), *argv])
+        return args.func(args)
+
     def test_add_fixed_creates_pending_draft_with_stable_identity(self) -> None:
         draft = queue.add_fixed(
             out_root=self.out_root,
@@ -364,6 +392,229 @@ class ReviewReplyQueueTests(unittest.TestCase):
         resolved = queue.resolve_source_item_path(draft, self.out_root)
 
         self.assertEqual(renamed, resolved)
+
+    def test_list_filters_by_source_pr_bundle_and_draft_id(self) -> None:
+        draft_2 = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+        )
+        item_3 = self.make_review_item(
+            pr_number=3,
+            thread_id="THREAD_3",
+            database_id="33333",
+        )
+        draft_3 = queue.add_declined(
+            out_root=self.out_root,
+            item_path=item_3,
+            reason="Out of scope.",
+        )
+
+        output = StringIO()
+        with redirect_stdout(output):
+            self.run_queue_command("list", "--source-pr", "2")
+        self.assertIn(draft_2["id"], output.getvalue())
+        self.assertNotIn(draft_3["id"], output.getvalue())
+
+        output = StringIO()
+        with redirect_stdout(output):
+            self.run_queue_command("list", "--bundle", str(item_3.parent.parent))
+        self.assertNotIn(draft_2["id"], output.getvalue())
+        self.assertIn(draft_3["id"], output.getvalue())
+
+        output = StringIO()
+        with redirect_stdout(output):
+            self.run_queue_command("list", "--draft-id", draft_2["id"])
+        self.assertIn(draft_2["id"], output.getvalue())
+        self.assertNotIn(draft_3["id"], output.getvalue())
+
+    def test_post_pending_unfiltered_multi_source_fails_before_mutation(self) -> None:
+        draft_2 = queue.add_declined(
+            out_root=self.out_root,
+            item_path=self.item,
+            reason="The existing behavior is intentional.",
+        )
+        item_3 = self.make_review_item(
+            pr_number=3,
+            thread_id="THREAD_3",
+            database_id="33333",
+        )
+        draft_3 = queue.add_declined(
+            out_root=self.out_root,
+            item_path=item_3,
+            reason="Out of scope.",
+        )
+
+        with patch.object(queue, "post_review_reply") as post_reply:
+            with self.assertRaisesRegex(queue.QueueError, "multiple source PRs"):
+                self.run_queue_command("post-pending")
+
+        post_reply.assert_not_called()
+        self.assertEqual("pending", self.load_draft_json(draft_2["id"])["status"])
+        self.assertEqual("pending", self.load_draft_json(draft_3["id"])["status"])
+        self.assertTrue(self.item.exists())
+        self.assertTrue(item_3.exists())
+
+    def test_post_pending_scoped_fix_url_only_updates_matching_drafts(self) -> None:
+        draft_2 = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+        )
+        item_3 = self.make_review_item(
+            pr_number=3,
+            thread_id="THREAD_3",
+            database_id="33333",
+        )
+        draft_3 = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=item_3,
+            summary="Use the other helper.",
+        )
+
+        with (
+            patch.object(queue, "ensure_gh_authenticated"),
+            patch.object(
+                queue,
+                "post_review_reply",
+                return_value={"html_url": "https://github.com/example/repo/pull/2#reply"},
+            ) as post_reply,
+            redirect_stdout(StringIO()),
+        ):
+            self.run_queue_command(
+                "post-pending",
+                "--source-pr",
+                "2",
+                "--fix-pr-url",
+                "https://github.com/example/repo/pull/6",
+            )
+
+        post_reply.assert_called_once()
+        saved_2 = self.load_draft_json(draft_2["id"])
+        saved_3 = self.load_draft_json(draft_3["id"])
+        self.assertEqual("posted", saved_2["status"])
+        self.assertEqual("https://github.com/example/repo/pull/6", saved_2["fix_pr_url"])
+        self.assertEqual("pending", saved_3["status"])
+        self.assertIsNone(saved_3["fix_pr_url"])
+        self.assertFalse(self.item.exists())
+        self.assertTrue(item_3.exists())
+
+    def test_post_pending_fix_url_repo_mismatch_fails_before_mutation(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+        )
+
+        with patch.object(queue, "post_review_reply") as post_reply:
+            with self.assertRaisesRegex(queue.QueueError, "does not match"):
+                self.run_queue_command(
+                    "post-pending",
+                    "--source-pr",
+                    "2",
+                    "--fix-pr-url",
+                    "https://github.com/other/repo/pull/6",
+                )
+
+        post_reply.assert_not_called()
+        saved = self.load_draft_json(draft["id"])
+        self.assertEqual("pending", saved["status"])
+        self.assertIsNone(saved["fix_pr_url"])
+
+    def test_set_fix_pr_all_pending_fixed_requires_explicit_scope(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+        )
+
+        with self.assertRaisesRegex(queue.QueueError, "explicit scope"):
+            self.run_queue_command(
+                "set-fix-pr",
+                "--all-pending-fixed",
+                "https://github.com/example/repo/pull/6",
+            )
+
+        self.assertIsNone(self.load_draft_json(draft["id"])["fix_pr_url"])
+
+    def test_set_fix_pr_all_pending_fixed_rejects_conflicting_url(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+            fix_pr_url="https://github.com/example/repo/pull/6",
+        )
+
+        with self.assertRaisesRegex(queue.QueueError, "different fix PR URL"):
+            self.run_queue_command(
+                "set-fix-pr",
+                "--all-pending-fixed",
+                "--source-pr",
+                "2",
+                "https://github.com/example/repo/pull/7",
+            )
+
+        self.assertEqual(
+            "https://github.com/example/repo/pull/6",
+            self.load_draft_json(draft["id"])["fix_pr_url"],
+        )
+
+    def test_command_post_prints_detailed_result(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+            fix_pr_url="https://github.com/example/repo/pull/6",
+        )
+
+        output = StringIO()
+        with (
+            patch.object(queue, "ensure_gh_authenticated"),
+            patch.object(
+                queue,
+                "post_review_reply",
+                return_value={"html_url": "https://github.com/example/repo/pull/2#reply"},
+            ),
+            redirect_stdout(output),
+        ):
+            self.run_queue_command("post", draft["id"])
+
+        result = output.getvalue()
+        self.assertIn(f"Draft: {draft['id']}", result)
+        self.assertIn("Status: posted", result)
+        self.assertIn("Disposition: fixed", result)
+        self.assertIn("Source PR: example/repo#2", result)
+        self.assertIn("Fix PR URL: https://github.com/example/repo/pull/6", result)
+        self.assertIn("Posted reply URL: https://github.com/example/repo/pull/2#reply", result)
+        self.assertIn("Item path:", result)
+
+    def test_preview_explains_blocked_fixed_reply_and_renders_with_url(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+            rationale="This avoids duplicate parsing.",
+        )
+
+        output = StringIO()
+        with redirect_stdout(output):
+            self.run_queue_command("preview", draft["id"])
+        self.assertIn("intentionally blocked", output.getvalue())
+
+        output = StringIO()
+        with redirect_stdout(output):
+            self.run_queue_command(
+                "preview",
+                draft["id"],
+                "--fix-pr-url",
+                "https://github.com/example/repo/pull/6",
+            )
+        preview = output.getvalue()
+        self.assertIn(
+            "Addressed in https://github.com/example/repo/pull/6: Use the shared helper.",
+            preview,
+        )
+        self.assertIn("This avoids duplicate parsing.", preview)
 
 
 if __name__ == "__main__":

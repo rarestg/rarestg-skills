@@ -38,6 +38,8 @@ ACTIVE_DUPLICATE_STATUSES = {
     "move_failed",
     "failed",
 }
+POST_PENDING_STATUSES = {"pending", "failed", "move_pending", "move_failed"}
+SET_FIX_PR_STATUSES = {"pending", "failed"}
 
 
 class QueueError(Exception):
@@ -161,6 +163,167 @@ def iter_drafts(out_root: Path) -> list[dict[str, Any]]:
         draft["_queue_path"] = str(path)
         drafts.append(draft)
     return drafts
+
+
+def source_identity(draft: dict[str, Any]) -> tuple[str, str, int]:
+    return (
+        str(draft.get("owner") or ""),
+        str(draft.get("repo") or ""),
+        int(draft.get("source_pr_number") or 0),
+    )
+
+
+def source_identity_text(identity: tuple[str, str, int]) -> str:
+    owner, repo, source_pr_number = identity
+    return f"{owner}/{repo}#{source_pr_number}"
+
+
+def draft_source_text(draft: dict[str, Any]) -> str:
+    return source_identity_text(source_identity(draft))
+
+
+def display_draft_for_summary(draft: dict[str, Any]) -> str:
+    return (
+        f"{draft.get('id')} "
+        f"({draft.get('status')}, {draft.get('disposition')}, "
+        f"{draft_source_text(draft)})"
+    )
+
+
+def canonical_path(path: Path) -> Path:
+    return path.expanduser().resolve()
+
+
+def draft_bundle_path(draft: dict[str, Any]) -> Path | None:
+    source_bundle = draft.get("source_bundle")
+    if source_bundle is None or not metadata_value_present(str(source_bundle)):
+        return None
+    return canonical_path(path_from_record(str(source_bundle)))
+
+
+def draft_matches_bundle(draft: dict[str, Any], bundle: str | None) -> bool:
+    if not bundle:
+        return True
+    draft_bundle = draft_bundle_path(draft)
+    return draft_bundle is not None and draft_bundle == canonical_path(Path(bundle))
+
+
+def remove_internal_fields(draft: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in draft.items() if not key.startswith("_")}
+
+
+def queue_filters_are_explicit(args: argparse.Namespace) -> bool:
+    return bool(
+        getattr(args, "source_pr", None) is not None
+        or getattr(args, "bundle", None)
+        or getattr(args, "filter_draft_ids", None)
+    )
+
+
+def filtered_drafts(
+    *,
+    out_root: Path,
+    status: str | None = None,
+    statuses: set[str] | None = None,
+    source_pr: int | None = None,
+    bundle: str | None = None,
+    draft_ids: list[str] | None = None,
+) -> list[dict[str, Any]]:
+    if draft_ids:
+        seen_ids: set[str] = set()
+        drafts = []
+        for draft_id in draft_ids:
+            draft = load_draft(out_root, draft_id)
+            if draft["id"] in seen_ids:
+                continue
+            seen_ids.add(draft["id"])
+            drafts.append(draft)
+    else:
+        drafts = iter_drafts(out_root)
+
+    filtered = []
+    for draft in drafts:
+        draft_status = draft.get("status")
+        if status and draft_status != status:
+            continue
+        if statuses and draft_status not in statuses:
+            continue
+        if source_pr is not None and int(draft.get("source_pr_number") or 0) != source_pr:
+            continue
+        if not draft_matches_bundle(draft, bundle):
+            continue
+        filtered.append(draft)
+    return filtered
+
+
+def source_identities(drafts: list[dict[str, Any]]) -> list[tuple[str, str, int]]:
+    return sorted({source_identity(draft) for draft in drafts})
+
+
+def format_source_summary(drafts: list[dict[str, Any]]) -> str:
+    lines = []
+    for identity in source_identities(drafts):
+        source_drafts = [draft for draft in drafts if source_identity(draft) == identity]
+        draft_list = ", ".join(str(draft.get("id")) for draft in source_drafts)
+        lines.append(f"- {source_identity_text(identity)}: {draft_list}")
+    return "\n".join(lines)
+
+
+def fixed_candidates_needing_fix_pr_url(drafts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidates = []
+    for draft in drafts:
+        if draft.get("disposition") != "fixed":
+            continue
+        if metadata_value_present(draft.get("fix_pr_url")):
+            continue
+        if draft.get("status") in {"move_pending", "move_failed"} and metadata_value_present(
+            draft.get("posted_reply_url")
+        ):
+            continue
+        candidates.append(draft)
+    return candidates
+
+
+def validate_fix_pr_url_for_candidates(
+    *,
+    fix_pr_url: str,
+    candidates: list[dict[str, Any]],
+) -> None:
+    fix_owner, fix_repo, _fix_number = parse_pr_url(fix_pr_url)
+    mismatched_sources = sorted(
+        {
+            draft_source_text(draft)
+            for draft in candidates
+            if draft.get("owner") != fix_owner or draft.get("repo") != fix_repo
+        }
+    )
+    if mismatched_sources:
+        raise QueueError(
+            "Fix PR URL repository does not match candidate draft source(s): "
+            + ", ".join(mismatched_sources)
+        )
+
+
+def validate_no_conflicting_fix_pr_urls(
+    *,
+    fix_pr_url: str,
+    candidates: list[dict[str, Any]],
+) -> None:
+    conflicts = [
+        draft
+        for draft in candidates
+        if draft.get("disposition") == "fixed"
+        and metadata_value_present(draft.get("fix_pr_url"))
+        and str(draft.get("fix_pr_url")) != fix_pr_url
+    ]
+    if conflicts:
+        raise QueueError(
+            "Some fixed drafts already have a different fix PR URL:\n"
+            + "\n".join(
+                f"- {draft.get('id')}: {draft.get('fix_pr_url')}"
+                for draft in conflicts
+            )
+        )
 
 
 def find_duplicate_draft(
@@ -449,6 +612,32 @@ def reply_body_for_post(draft: dict[str, Any]) -> str:
     return str(reply_body)
 
 
+def draft_ready_for_post_preflight(
+    *,
+    out_root: Path,
+    draft: dict[str, Any],
+) -> None:
+    status = draft.get("status")
+    if status == "posted":
+        return
+    if status in {"move_pending", "move_failed"} and draft.get("posted_reply_url"):
+        move_review_item_after_post(out_root=out_root, draft=draft, dry_run=True)
+        return
+    if status == "posting":
+        raise QueueError(
+            f"Draft {draft['id']} is in posting state without a recorded reply URL. "
+            "Inspect GitHub before retrying to avoid a duplicate reply."
+        )
+
+    reply_body_for_post(draft)
+    primary_comment_database_id = draft.get("primary_comment_database_id")
+    if not metadata_value_present(primary_comment_database_id):
+        raise QueueError(
+            f"Draft {draft['id']} is missing Primary Comment Database ID; cannot post."
+        )
+    move_review_item_after_post(out_root=out_root, draft=draft, dry_run=True)
+
+
 def mark_post_failed(out_root: Path, draft: dict[str, Any], error: Exception) -> None:
     draft["status"] = "failed"
     draft["last_error"] = str(error)
@@ -483,6 +672,8 @@ def post_draft(
             draft=draft,
             dry_run=dry_run,
         )
+        if dry_run:
+            draft["_target_item_path"] = display_path(target_path)
         if not dry_run:
             draft["status"] = "posted"
             draft["source_item_path"] = display_path(target_path)
@@ -509,12 +700,8 @@ def post_draft(
             draft=draft,
             dry_run=True,
         )
-        print(
-            "[DRY RUN] Would post draft "
-            f"{draft['id']} to {draft['owner']}/{draft['repo']}#{draft['source_pr_number']}"
-        )
-        print(reply_body)
-        print(f"[DRY RUN] Would move item to {target_path}")
+        draft["_target_item_path"] = display_path(target_path)
+        draft["_reply_body_preview"] = reply_body
         return draft
 
     try:
@@ -603,6 +790,164 @@ def recover_posting_draft(
     return recovered
 
 
+def prepare_post_pending_drafts(
+    *,
+    out_root: Path,
+    drafts: list[dict[str, Any]],
+    fix_pr_url: str | None,
+    explicit_scope: bool,
+    dry_run: bool = False,
+) -> list[dict[str, Any]]:
+    if not explicit_scope and len(source_identities(drafts)) > 1:
+        raise QueueError(
+            "Refusing to post an unfiltered pending set that spans multiple "
+            "source PRs:\n"
+            f"{format_source_summary(drafts)}\n"
+            "Add --source-pr <number>, --bundle <path>, or repeated "
+            "--draft-id <id> to choose the intended set."
+        )
+
+    needs_fix_pr_url = fixed_candidates_needing_fix_pr_url(drafts)
+    if fix_pr_url and needs_fix_pr_url and not explicit_scope:
+        raise QueueError(
+            "Refusing to attach a fix PR URL without an explicit scope. "
+            "Add --source-pr <number>, --bundle <path>, or repeated --draft-id <id>."
+        )
+
+    if fix_pr_url:
+        validate_fix_pr_url_for_candidates(
+            fix_pr_url=fix_pr_url,
+            candidates=needs_fix_pr_url,
+        )
+        validate_no_conflicting_fix_pr_urls(
+            fix_pr_url=fix_pr_url,
+            candidates=[draft for draft in drafts if draft.get("disposition") == "fixed"],
+        )
+
+    if needs_fix_pr_url and not fix_pr_url:
+        raise QueueError(
+            "Fixed drafts require a fix PR URL before posting:\n"
+            + "\n".join(f"- {display_draft_for_summary(draft)}" for draft in needs_fix_pr_url)
+            + "\nProvide --fix-pr-url with an explicit scope, or narrow the pending set."
+        )
+
+    prepared_for_preflight = []
+    needs_fix_ids = {draft["id"] for draft in needs_fix_pr_url}
+    for draft in drafts:
+        working = draft
+        if fix_pr_url and draft.get("id") in needs_fix_ids:
+            working = set_fix_pr_url(
+                out_root=out_root,
+                draft=draft,
+                fix_pr_url=fix_pr_url,
+                dry_run=True,
+            )
+        draft_ready_for_post_preflight(out_root=out_root, draft=dict(working))
+        prepared_for_preflight.append(working)
+
+    if dry_run or not fix_pr_url:
+        return prepared_for_preflight
+
+    prepared = []
+    for draft in prepared_for_preflight:
+        if draft.get("id") in needs_fix_ids:
+            draft = set_fix_pr_url(
+                out_root=out_root,
+                draft=draft,
+                fix_pr_url=fix_pr_url,
+            )
+        prepared.append(draft)
+    return prepared
+
+
+def validate_set_fix_pr_bulk(
+    *,
+    candidates: list[dict[str, Any]],
+    fix_pr_url: str,
+    explicit_scope: bool,
+) -> None:
+    if candidates and not explicit_scope:
+        raise QueueError(
+            "Refusing to attach a fix PR URL to all pending fixed drafts without "
+            "an explicit scope. Add --source-pr <number>, --bundle <path>, or "
+            "repeated --draft-id <id>."
+        )
+    validate_fix_pr_url_for_candidates(
+        fix_pr_url=fix_pr_url,
+        candidates=candidates,
+    )
+    validate_no_conflicting_fix_pr_urls(
+        fix_pr_url=fix_pr_url,
+        candidates=candidates,
+    )
+
+
+def print_draft_result(draft: dict[str, Any], *, dry_run: bool = False) -> None:
+    prefix = "[DRY RUN] " if dry_run else ""
+    print(f"{prefix}Draft: {draft.get('id')}")
+    print(f"  Status: {draft.get('status')}")
+    print(f"  Disposition: {draft.get('disposition')}")
+    print(f"  Source PR: {draft_source_text(draft)}")
+    if metadata_value_present(draft.get("fix_pr_url")):
+        print(f"  Fix PR URL: {draft.get('fix_pr_url')}")
+    if metadata_value_present(draft.get("posted_reply_url")):
+        print(f"  Posted reply URL: {draft.get('posted_reply_url')}")
+    target_item_path = draft.get("_target_item_path")
+    if dry_run and metadata_value_present(target_item_path):
+        print(f"  Would move item to: {target_item_path}")
+    elif metadata_value_present(draft.get("source_item_path")):
+        print(f"  Item path: {draft.get('source_item_path')}")
+    if metadata_value_present(draft.get("last_error")):
+        print(f"  Last error: {draft.get('last_error')}")
+    reply_body_preview = draft.get("_reply_body_preview")
+    if dry_run and metadata_value_present(reply_body_preview):
+        print("  Reply preview:")
+        for line in str(reply_body_preview).splitlines() or [""]:
+            print(f"    {line}")
+
+
+def print_preview(draft: dict[str, Any], *, fix_pr_url: str | None = None) -> None:
+    print(f"Draft: {draft.get('id')}")
+    print(f"Status: {draft.get('status')}")
+    print(f"Disposition: {draft.get('disposition')}")
+    print(f"Source PR: {draft_source_text(draft)}")
+    if metadata_value_present(draft.get("source_item_path")):
+        print(f"Item path: {draft.get('source_item_path')}")
+
+    if fix_pr_url:
+        if draft.get("disposition") != "fixed":
+            raise QueueError("--fix-pr-url preview is only valid for fixed drafts.")
+        validate_fix_pr_url_for_candidates(fix_pr_url=fix_pr_url, candidates=[draft])
+
+    if draft.get("disposition") == "fixed":
+        effective_fix_pr_url = fix_pr_url or draft.get("fix_pr_url")
+        if not metadata_value_present(effective_fix_pr_url):
+            print(
+                "Reply body: intentionally blocked until a fix PR URL is attached."
+            )
+            print(
+                "Use preview --fix-pr-url <url> to render the final reply without "
+                "mutating the queue."
+            )
+            return
+        reply_body = render_fixed_reply(
+            fix_pr_url=str(effective_fix_pr_url),
+            summary=draft.get("summary") or "",
+            rationale=draft.get("rationale"),
+        )
+    else:
+        reply_body = draft.get("reply_body")
+        if not metadata_value_present(reply_body) and draft.get("disposition") == "declined":
+            reply_body = render_declined_reply(reason=draft.get("reason") or "")
+
+    if not metadata_value_present(reply_body):
+        print("Reply body: unavailable.")
+        return
+
+    print("Reply body:")
+    print(str(reply_body))
+
+
 def print_draft_summary(draft: dict[str, Any]) -> None:
     print(
         "\t".join(
@@ -640,9 +985,23 @@ def command_add_declined(args: argparse.Namespace) -> int:
 
 
 def command_list(args: argparse.Namespace) -> int:
-    for draft in iter_drafts(resolve_review_out_root(args.out_root)):
-        if args.status and draft.get("status") != args.status:
-            continue
+    drafts = filtered_drafts(
+        out_root=resolve_review_out_root(args.out_root),
+        status=args.status,
+        source_pr=getattr(args, "source_pr", None),
+        bundle=getattr(args, "bundle", None),
+        draft_ids=getattr(args, "filter_draft_ids", None),
+    )
+    if getattr(args, "json", False):
+        print(
+            json.dumps(
+                [remove_internal_fields(draft) for draft in drafts],
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    for draft in drafts:
         print_draft_summary(draft)
     return 0
 
@@ -654,38 +1013,62 @@ def command_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_preview(args: argparse.Namespace) -> int:
+    draft = load_draft(resolve_review_out_root(args.out_root), args.draft_id)
+    print_preview(draft, fix_pr_url=args.fix_pr_url)
+    return 0
+
+
 def command_set_fix_pr(args: argparse.Namespace) -> int:
     out_root = resolve_review_out_root(args.out_root)
     if bool(args.draft_id) == bool(args.all_pending_fixed):
         raise QueueError("Provide exactly one of <draft-id> or --all-pending-fixed.")
 
     if args.all_pending_fixed:
-        updated_count = 0
-        for draft in iter_drafts(out_root):
-            if draft.get("disposition") != "fixed":
-                continue
-            if draft.get("status") not in {"pending", "failed"}:
-                continue
-            set_fix_pr_url(
+        candidates = [
+            draft
+            for draft in filtered_drafts(
+                out_root=out_root,
+                statuses=SET_FIX_PR_STATUSES,
+                source_pr=getattr(args, "source_pr", None),
+                bundle=getattr(args, "bundle", None),
+                draft_ids=getattr(args, "filter_draft_ids", None),
+            )
+            if draft.get("disposition") == "fixed"
+        ]
+        validate_set_fix_pr_bulk(
+            candidates=candidates,
+            fix_pr_url=args.fix_pr_url,
+            explicit_scope=queue_filters_are_explicit(args),
+        )
+        for draft in candidates:
+            updated = set_fix_pr_url(
                 out_root=out_root,
                 draft=draft,
                 fix_pr_url=args.fix_pr_url,
                 dry_run=args.dry_run,
             )
-            print(draft["id"])
-            updated_count += 1
-        if updated_count == 0:
+            print_draft_result(updated, dry_run=args.dry_run)
+        if not candidates:
             print("No pending fixed drafts matched.")
         return 0
 
     draft = load_draft(out_root, args.draft_id)
+    validate_fix_pr_url_for_candidates(
+        fix_pr_url=args.fix_pr_url,
+        candidates=[draft],
+    )
+    validate_no_conflicting_fix_pr_urls(
+        fix_pr_url=args.fix_pr_url,
+        candidates=[draft],
+    )
     updated = set_fix_pr_url(
         out_root=out_root,
         draft=draft,
         fix_pr_url=args.fix_pr_url,
         dry_run=args.dry_run,
     )
-    print(updated["id"])
+    print_draft_result(updated, dry_run=args.dry_run)
     return 0
 
 
@@ -693,42 +1076,40 @@ def command_post(args: argparse.Namespace) -> int:
     out_root = resolve_review_out_root(args.out_root)
     draft = load_draft(out_root, args.draft_id)
     posted = post_draft(out_root=out_root, draft=draft, dry_run=args.dry_run)
-    print(posted["id"])
-    if posted.get("posted_reply_url"):
-        print(posted["posted_reply_url"])
+    print_draft_result(posted, dry_run=args.dry_run)
     return 0
 
 
 def command_post_pending(args: argparse.Namespace) -> int:
     out_root = resolve_review_out_root(args.out_root)
+    candidates = filtered_drafts(
+        out_root=out_root,
+        statuses=POST_PENDING_STATUSES,
+        source_pr=getattr(args, "source_pr", None),
+        bundle=getattr(args, "bundle", None),
+        draft_ids=getattr(args, "filter_draft_ids", None),
+    )
+    prepared = prepare_post_pending_drafts(
+        out_root=out_root,
+        drafts=candidates,
+        fix_pr_url=args.fix_pr_url,
+        explicit_scope=queue_filters_are_explicit(args),
+        dry_run=args.dry_run,
+    )
     errors = 0
     posted_count = 0
-    for draft in iter_drafts(out_root):
-        if draft.get("status") not in {"pending", "failed", "move_pending", "move_failed"}:
-            continue
-        working = draft
-        if (
-            args.fix_pr_url
-            and draft.get("disposition") == "fixed"
-            and not metadata_value_present(draft.get("fix_pr_url"))
-        ):
-            working = set_fix_pr_url(
-                out_root=out_root,
-                draft=draft,
-                fix_pr_url=args.fix_pr_url,
-                dry_run=args.dry_run,
-            )
+    for draft in prepared:
         try:
             posted = post_draft(
                 out_root=out_root,
-                draft=working,
+                draft=draft,
                 dry_run=args.dry_run,
             )
         except Exception as error:  # noqa: BLE001
             errors += 1
             print(f"{draft.get('id')}: {error}", file=sys.stderr)
             continue
-        print(posted["id"])
+        print_draft_result(posted, dry_run=args.dry_run)
         posted_count += 1
 
     if posted_count == 0 and errors == 0:
@@ -746,9 +1127,7 @@ def command_recover_posting(args: argparse.Namespace) -> int:
         no_reply_posted=args.no_reply_posted,
         dry_run=args.dry_run,
     )
-    print(recovered["id"])
-    if recovered.get("posted_reply_url"):
-        print(recovered["posted_reply_url"])
+    print_draft_result(recovered, dry_run=args.dry_run)
     return 0
 
 
@@ -777,16 +1156,28 @@ def build_parser() -> argparse.ArgumentParser:
 
     list_parser = subparsers.add_parser("list")
     list_parser.add_argument("--status")
+    list_parser.add_argument("--source-pr", type=int)
+    list_parser.add_argument("--bundle")
+    list_parser.add_argument("--draft-id", action="append", dest="filter_draft_ids")
+    list_parser.add_argument("--json", action="store_true")
     list_parser.set_defaults(func=command_list)
 
     show_parser = subparsers.add_parser("show")
     show_parser.add_argument("draft_id")
     show_parser.set_defaults(func=command_show)
 
+    preview_parser = subparsers.add_parser("preview")
+    preview_parser.add_argument("draft_id")
+    preview_parser.add_argument("--fix-pr-url")
+    preview_parser.set_defaults(func=command_preview)
+
     set_fix_pr_parser = subparsers.add_parser("set-fix-pr")
     set_fix_pr_parser.add_argument("draft_id", nargs="?")
     set_fix_pr_parser.add_argument("fix_pr_url")
     set_fix_pr_parser.add_argument("--all-pending-fixed", action="store_true")
+    set_fix_pr_parser.add_argument("--source-pr", type=int)
+    set_fix_pr_parser.add_argument("--bundle")
+    set_fix_pr_parser.add_argument("--draft-id", action="append", dest="filter_draft_ids")
     set_fix_pr_parser.add_argument("--dry-run", action="store_true")
     set_fix_pr_parser.set_defaults(func=command_set_fix_pr)
 
@@ -797,6 +1188,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     post_pending_parser = subparsers.add_parser("post-pending")
     post_pending_parser.add_argument("--fix-pr-url")
+    post_pending_parser.add_argument("--source-pr", type=int)
+    post_pending_parser.add_argument("--bundle")
+    post_pending_parser.add_argument("--draft-id", action="append", dest="filter_draft_ids")
     post_pending_parser.add_argument("--dry-run", action="store_true")
     post_pending_parser.set_defaults(func=command_post_pending)
 
