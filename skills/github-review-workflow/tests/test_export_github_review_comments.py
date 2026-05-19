@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,6 +10,10 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from export_github_review_comments import (  # noqa: E402
+    LEGACY_OUT_ROOT_GITIGNORES,
+    OUT_ROOT_GITIGNORE,
+    build_bundle_manifest,
+    ensure_out_root_scaffold,
     extract_coderabbit_nitpicks,
     extract_coderabbit_outside_diff_comments,
     extract_nitpick_items_from_file_section,
@@ -16,6 +21,13 @@ from export_github_review_comments import (  # noqa: E402
     nitpick_identity_from_item,
     nitpick_identity_from_metadata,
     parse_blockquoted_nitpick_file_sections,
+    render_bundle_readme,
+)
+from github_review_utils import (  # noqa: E402
+    DEFAULT_OUT_ROOT,
+    LEGACY_OUT_ROOT,
+    STATE_SOURCE,
+    resolve_review_out_root,
 )
 
 
@@ -30,6 +42,83 @@ def coderabbit_review(body: str) -> dict:
 
 
 class ExportGithubReviewCommentsTests(unittest.TestCase):
+    def test_default_out_root_uses_hidden_workflow_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            self.assertEqual(DEFAULT_OUT_ROOT, resolve_review_out_root(None, cwd=root))
+
+    def test_legacy_out_root_guard_requires_explicit_choice(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / LEGACY_OUT_ROOT).mkdir()
+
+            with self.assertRaisesRegex(RuntimeError, "--out-root 'GitHub Reviews'"):
+                resolve_review_out_root(None, cwd=root)
+
+            self.assertEqual(
+                LEGACY_OUT_ROOT,
+                resolve_review_out_root(str(LEGACY_OUT_ROOT), cwd=root),
+            )
+
+            (root / DEFAULT_OUT_ROOT).mkdir()
+            self.assertEqual(DEFAULT_OUT_ROOT, resolve_review_out_root(None, cwd=root))
+
+    def test_out_root_scaffold_ignores_entire_generated_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            out_root = Path(temp_dir) / DEFAULT_OUT_ROOT
+
+            ensure_out_root_scaffold(out_root)
+
+            self.assertEqual(
+                OUT_ROOT_GITIGNORE,
+                (out_root / ".gitignore").read_text(encoding="utf-8"),
+            )
+
+    def test_out_root_scaffold_rewrites_legacy_gitignore_scaffolds(self) -> None:
+        for legacy_gitignore in LEGACY_OUT_ROOT_GITIGNORES:
+            with self.subTest(legacy_gitignore=legacy_gitignore):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    out_root = Path(temp_dir) / DEFAULT_OUT_ROOT
+                    out_root.mkdir()
+                    gitignore_path = out_root / ".gitignore"
+                    gitignore_path.write_text(legacy_gitignore, encoding="utf-8")
+
+                    ensure_out_root_scaffold(out_root)
+
+                    self.assertEqual(
+                        OUT_ROOT_GITIGNORE,
+                        gitignore_path.read_text(encoding="utf-8"),
+                    )
+
+    def test_manifest_and_readme_describe_snapshot_status_model(self) -> None:
+        pr = {
+            "number": 7,
+            "title": "Example",
+            "url": "https://github.com/example/repo/pull/7",
+            "state": "OPEN",
+        }
+        manifest = build_bundle_manifest(
+            pr=pr,
+            walkthrough_file=None,
+            actionable_threads=[],
+            outside_diff_comments=[],
+            nitpicks=[],
+            review_summaries=[],
+        )
+
+        readme = render_bundle_readme(
+            pr=pr,
+            manifest=manifest,
+            has_walkthrough=False,
+        )
+
+        self.assertEqual(STATE_SOURCE, manifest["state_source"])
+        self.assertIn("PR Review Bundle Snapshot", readme)
+        self.assertIn("export snapshots", readme)
+        self.assertIn("folder placement", readme)
+        self.assertIn("../reply-queue/", readme)
+
     def test_extracts_case_insensitive_combined_nitpick_heading(self) -> None:
         body = """
 <details><summary>Review NITPICK comments (1)</summary>

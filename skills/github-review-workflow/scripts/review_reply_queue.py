@@ -18,16 +18,17 @@ from pathlib import Path
 from typing import Any
 
 from github_review_utils import (
+    DEFAULT_OUT_ROOT,
     ensure_gh_authenticated,
     metadata_value_present,
     parse_pr_url,
     parse_review_item_metadata,
     post_review_reply,
     reply_url_from_response,
+    resolve_review_out_root,
 )
 
 SCHEMA_VERSION = 1
-DEFAULT_OUT_ROOT = Path("GitHub Reviews")
 QUEUE_DIR_NAME = "reply-queue"
 THREAD_STATUS_FOLDERS = ("todo", "done", "ignored")
 ACTIVE_DUPLICATE_STATUSES = {
@@ -618,7 +619,7 @@ def print_draft_summary(draft: dict[str, Any]) -> None:
 
 def command_add_fixed(args: argparse.Namespace) -> int:
     draft = add_fixed(
-        out_root=Path(args.out_root),
+        out_root=resolve_review_out_root(args.out_root),
         item_path=Path(args.item),
         summary=args.summary,
         rationale=args.rationale,
@@ -630,7 +631,7 @@ def command_add_fixed(args: argparse.Namespace) -> int:
 
 def command_add_declined(args: argparse.Namespace) -> int:
     draft = add_declined(
-        out_root=Path(args.out_root),
+        out_root=resolve_review_out_root(args.out_root),
         item_path=Path(args.item),
         reason=args.reason,
     )
@@ -639,7 +640,7 @@ def command_add_declined(args: argparse.Namespace) -> int:
 
 
 def command_list(args: argparse.Namespace) -> int:
-    for draft in iter_drafts(Path(args.out_root)):
+    for draft in iter_drafts(resolve_review_out_root(args.out_root)):
         if args.status and draft.get("status") != args.status:
             continue
         print_draft_summary(draft)
@@ -647,14 +648,14 @@ def command_list(args: argparse.Namespace) -> int:
 
 
 def command_show(args: argparse.Namespace) -> int:
-    draft = load_draft(Path(args.out_root), args.draft_id)
+    draft = load_draft(resolve_review_out_root(args.out_root), args.draft_id)
     draft.pop("_queue_path", None)
     print(json.dumps(draft, indent=2, sort_keys=True))
     return 0
 
 
 def command_set_fix_pr(args: argparse.Namespace) -> int:
-    out_root = Path(args.out_root)
+    out_root = resolve_review_out_root(args.out_root)
     if bool(args.draft_id) == bool(args.all_pending_fixed):
         raise QueueError("Provide exactly one of <draft-id> or --all-pending-fixed.")
 
@@ -689,7 +690,7 @@ def command_set_fix_pr(args: argparse.Namespace) -> int:
 
 
 def command_post(args: argparse.Namespace) -> int:
-    out_root = Path(args.out_root)
+    out_root = resolve_review_out_root(args.out_root)
     draft = load_draft(out_root, args.draft_id)
     posted = post_draft(out_root=out_root, draft=draft, dry_run=args.dry_run)
     print(posted["id"])
@@ -699,7 +700,7 @@ def command_post(args: argparse.Namespace) -> int:
 
 
 def command_post_pending(args: argparse.Namespace) -> int:
-    out_root = Path(args.out_root)
+    out_root = resolve_review_out_root(args.out_root)
     errors = 0
     posted_count = 0
     for draft in iter_drafts(out_root):
@@ -736,7 +737,7 @@ def command_post_pending(args: argparse.Namespace) -> int:
 
 
 def command_recover_posting(args: argparse.Namespace) -> int:
-    out_root = Path(args.out_root)
+    out_root = resolve_review_out_root(args.out_root)
     draft = load_draft(out_root, args.draft_id)
     recovered = recover_posting_draft(
         out_root=out_root,
@@ -757,8 +758,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--out-root",
-        default=str(DEFAULT_OUT_ROOT),
-        help="Root review bundle directory (default: GitHub Reviews)",
+        default=None,
+        help=f"Root review bundle directory (default: {DEFAULT_OUT_ROOT})",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 

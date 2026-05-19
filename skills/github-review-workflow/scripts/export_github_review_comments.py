@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Export clean GitHub PR review comments into local files under `GitHub Reviews/`
-in the current working project.
+Export clean GitHub PR review comments into local files under
+`.github-review-workflow/` in the current working project.
 
 The export intentionally treats inline review threads as the actionable queue,
 saves CodeRabbit walkthroughs as optional context, and exports CodeRabbit
@@ -23,9 +23,12 @@ from typing import Any
 
 from comment_formatters import extract_comment_title, sanitize_comment_text
 from github_review_utils import (
+    DEFAULT_OUT_ROOT,
+    STATE_SOURCE,
     ensure_gh_authenticated,
     metadata_value_present,
     parse_pr_url,
+    resolve_review_out_root,
     run_json,
 )
 
@@ -122,8 +125,14 @@ query($threadId: ID!, $commentsCursor: String) {
 }
 """
 
-OUT_ROOT_GITIGNORE = "*\n!.gitignore\n"
-LEGACY_OUT_ROOT_GITIGNORE = "*\n!.gitignore\n!SOP.md\n"
+OUT_ROOT_GITIGNORE = "*\n"
+LEGACY_OUT_ROOT_GITIGNORES = ("*\n!.gitignore\n", "*\n!.gitignore\n!SOP.md\n")
+STATE_SOURCE_NOTE = (
+    "This README and manifest are export snapshots. Current item status is "
+    "the item's folder placement (`todo/`, `outside-diff/`, `nitpicks/`, "
+    "`done/`, or `ignored/`) plus review-thread reply records under "
+    "`../reply-queue/`."
+)
 REVIEW_ITEM_TOP_SECTION_END = "---"
 WALKTHROUGH_BLOCK_PATTERN = re.compile(
     r"<!--\s*walkthrough_start\s*-->(.*?)<!--\s*walkthrough_end\s*-->",
@@ -1023,7 +1032,7 @@ def ensure_out_root_scaffold(out_root: Path) -> None:
         return
 
     existing = gitignore_path.read_text(encoding="utf-8")
-    if existing == LEGACY_OUT_ROOT_GITIGNORE:
+    if existing in LEGACY_OUT_ROOT_GITIGNORES:
         write_text(gitignore_path, OUT_ROOT_GITIGNORE)
 
 
@@ -1101,6 +1110,137 @@ def write_review_summary_item_files(
         )
 
     return manifest_items
+
+
+def render_bundle_readme(
+    *,
+    pr: dict[str, Any],
+    manifest: dict[str, Any],
+    has_walkthrough: bool,
+) -> str:
+    manifest_items = manifest["actionable_threads"]
+    outside_diff_manifest_items = manifest["outside_diff_comments"]
+    nitpick_manifest_items = manifest["nitpicks"]
+    review_summaries = manifest["review_summaries"]
+
+    index_lines = [
+        f"# PR Review Bundle Snapshot — #{pr['number']}",
+        "",
+        f"Title: {pr['title']}",
+        f"PR URL: {pr['url']}",
+        f"State: {pr['state']}",
+        f"Generated: {manifest['generated_at']}",
+        "",
+        STATE_SOURCE_NOTE,
+        "",
+        "## Context",
+        "",
+    ]
+    if has_walkthrough:
+        index_lines.append("- CodeRabbit walkthrough: `context/01-coderabbit-walkthrough.md`")
+    else:
+        index_lines.append("- CodeRabbit walkthrough: not found")
+
+    index_lines.extend(
+        [
+            "",
+            "## Actionable Inline Review Threads",
+            "",
+            f"- Exported thread files: {len(manifest_items)}",
+            f"- Review summaries retained as metadata: {len(review_summaries)}",
+            "",
+        ]
+    )
+
+    for item in manifest_items:
+        index_lines.append(
+            f"- `{item['file']}` — {item['title']} ({item['path']}:{item['line'] or 'n/a'})"
+        )
+
+    if not manifest_items:
+        index_lines.append("- No actionable inline review threads matched the export filter.")
+
+    index_lines.extend(
+        [
+            "",
+            "## CodeRabbit Outside Diff Range Comments",
+            "",
+            f"- Exported outside-diff files: {len(outside_diff_manifest_items)}",
+            "",
+        ]
+    )
+
+    for item in outside_diff_manifest_items:
+        index_lines.append(
+            f"- `{item['file']}` — {item['title']} ({item['path']}:{item['line_range'] or 'n/a'})"
+        )
+
+    if not outside_diff_manifest_items:
+        index_lines.append("- No CodeRabbit outside-diff review-summary items found.")
+
+    index_lines.extend(
+        [
+            "",
+            "## CodeRabbit Nitpicks",
+            "",
+            f"- Exported nitpick files: {len(nitpick_manifest_items)}",
+            "",
+        ]
+    )
+
+    for item in nitpick_manifest_items:
+        index_lines.append(
+            f"- `{item['file']}` — {item['title']} ({item['path']}:{item['line_range'] or 'n/a'})"
+        )
+
+    if not nitpick_manifest_items:
+        index_lines.append("- No CodeRabbit nitpick review-summary items found.")
+
+    index_lines.extend(
+        [
+            "",
+            "## Notes",
+            "",
+            "- The actionable queue comes from `reviewThreads.comments`, not `reviews`.",
+            "- CodeRabbit outside-diff comments and nitpicks come from structured "
+            "`reviews` summary sections and are exported separately from actionable "
+            "inline threads.",
+            "- This README and `manifest.json` describe one export run; they are "
+            "not updated when items are later moved.",
+            "- Re-running export preserves existing `todo/`, `outside-diff/`, "
+            "`nitpicks/`, `done/`, and `ignored/` placement for recognized items.",
+            "- Existing local status files can remain on disk even when their "
+            "GitHub items are not included by the current export filter.",
+            "- Default workflow posts review-thread replies after local audit, "
+            "but does not resolve threads, commit, push, or create PRs unless "
+            "explicitly requested.",
+            "- Move files from `todo/` to `done/` or `ignored/` only after "
+            "local audit and the required review-thread reply.",
+        ]
+    )
+
+    return "\n".join(index_lines)
+
+
+def build_bundle_manifest(
+    *,
+    pr: dict[str, Any],
+    walkthrough_file: str | None,
+    actionable_threads: list[dict[str, Any]],
+    outside_diff_comments: list[dict[str, Any]],
+    nitpicks: list[dict[str, Any]],
+    review_summaries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "state_source": STATE_SOURCE,
+        "pull_request": pr,
+        "walkthrough_file": walkthrough_file,
+        "actionable_threads": actionable_threads,
+        "outside_diff_comments": outside_diff_comments,
+        "nitpicks": nitpicks,
+        "review_summaries": review_summaries,
+    }
 
 
 def export_review_bundle(
@@ -1283,110 +1423,23 @@ def export_review_bundle(
         allow_legacy_identity=True,
     )
 
-    manifest = {
-        "generated_at": datetime.now(UTC).isoformat(),
-        "pull_request": pr,
-        "walkthrough_file": str(walkthrough_path.relative_to(pr_dir)) if walkthrough_path else None,
-        "actionable_threads": manifest_items,
-        "outside_diff_comments": outside_diff_manifest_items,
-        "nitpicks": nitpick_manifest_items,
-        "review_summaries": review_summaries,
-    }
+    manifest = build_bundle_manifest(
+        pr=pr,
+        walkthrough_file=str(walkthrough_path.relative_to(pr_dir)) if walkthrough_path else None,
+        actionable_threads=manifest_items,
+        outside_diff_comments=outside_diff_manifest_items,
+        nitpicks=nitpick_manifest_items,
+        review_summaries=review_summaries,
+    )
     write_text(pr_dir / "manifest.json", json.dumps(manifest, indent=2))
-
-    index_lines = [
-        f"# PR Review Bundle — #{pr['number']}",
-        "",
-        f"Title: {pr['title']}",
-        f"PR URL: {pr['url']}",
-        f"State: {pr['state']}",
-        f"Generated: {manifest['generated_at']}",
-        "",
-        "## Context",
-        "",
-    ]
-    if walkthrough_path:
-        index_lines.append("- CodeRabbit walkthrough: `context/01-coderabbit-walkthrough.md`")
-    else:
-        index_lines.append("- CodeRabbit walkthrough: not found")
-
-    index_lines.extend(
-        [
-            "",
-            "## Actionable Inline Review Threads",
-            "",
-            f"- Exported thread files: {len(manifest_items)}",
-            f"- Review summaries retained as metadata: {len(review_summaries)}",
-            "",
-        ]
+    write_text(
+        pr_dir / "README.md",
+        render_bundle_readme(
+            pr=pr,
+            manifest=manifest,
+            has_walkthrough=walkthrough_path is not None,
+        ),
     )
-
-    for item in manifest_items:
-        index_lines.append(
-            f"- `{item['file']}` — {item['title']} ({item['path']}:{item['line'] or 'n/a'})"
-        )
-
-    if not manifest_items:
-        index_lines.append("- No actionable inline review threads matched the export filter.")
-
-    index_lines.extend(
-        [
-            "",
-            "## CodeRabbit Outside Diff Range Comments",
-            "",
-            f"- Exported outside-diff files: {len(outside_diff_manifest_items)}",
-            "",
-        ]
-    )
-
-    for item in outside_diff_manifest_items:
-        index_lines.append(
-            f"- `{item['file']}` — {item['title']} ({item['path']}:{item['line_range'] or 'n/a'})"
-        )
-
-    if not outside_diff_manifest_items:
-        index_lines.append("- No CodeRabbit outside-diff review-summary items found.")
-
-    index_lines.extend(
-        [
-            "",
-            "## CodeRabbit Nitpicks",
-            "",
-            f"- Exported nitpick files: {len(nitpick_manifest_items)}",
-            "",
-        ]
-    )
-
-    for item in nitpick_manifest_items:
-        index_lines.append(
-            f"- `{item['file']}` — {item['title']} ({item['path']}:{item['line_range'] or 'n/a'})"
-        )
-
-    if not nitpick_manifest_items:
-        index_lines.append("- No CodeRabbit nitpick review-summary items found.")
-
-    index_lines.extend(
-        [
-            "",
-            "## Notes",
-            "",
-            "- The actionable queue comes from `reviewThreads.comments`, not `reviews`.",
-            "- CodeRabbit outside-diff comments and nitpicks come from structured "
-            "`reviews` summary sections and are exported separately from actionable "
-            "inline threads.",
-            "- Re-running export preserves existing `todo/`, `outside-diff/`, "
-            "`nitpicks/`, `done/`, and `ignored/` placement for recognized items.",
-            "- Existing local status files can remain on disk even when their "
-            "GitHub items are not included by the current export filter.",
-            "- Default workflow posts review-thread replies after local audit, "
-            "but does not resolve threads, commit, push, or create PRs unless "
-            "explicitly requested.",
-            "- Move files from `todo/` to `done/` or `ignored/` only after "
-            "local audit and the required review-thread reply.",
-        ]
-    )
-
-    write_text(pr_dir / "README.md", "\n".join(index_lines))
     for warning in warnings:
         print(warning, file=sys.stderr)
     return pr_dir
@@ -1399,8 +1452,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("pr_url", help="GitHub pull request URL")
     parser.add_argument(
         "--out-root",
-        default="GitHub Reviews",
-        help="Root directory for exported review bundles in the current working project (default: GitHub Reviews)",
+        default=None,
+        help=(
+            "Root directory for exported review bundles in the current working "
+            f"project (default: {DEFAULT_OUT_ROOT})"
+        ),
     )
     parser.add_argument(
         "--include-resolved",
@@ -1431,7 +1487,7 @@ def main() -> int:
     try:
         pr_dir = export_review_bundle(
             pr_url=args.pr_url,
-            out_root=Path(args.out_root),
+            out_root=resolve_review_out_root(args.out_root),
             include_resolved=args.include_resolved,
             strip_ai_prompts=args.strip_ai_prompts,
         )

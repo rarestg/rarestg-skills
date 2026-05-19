@@ -12,6 +12,16 @@ PR_URL_PATTERN = re.compile(
 
 MISSING_METADATA_VALUES = {"", "n/a", "none", "null"}
 REVIEW_ITEM_TOP_SECTION_END = "---"
+DEFAULT_OUT_ROOT = Path(".github-review-workflow")
+LEGACY_OUT_ROOT = Path("GitHub Reviews")
+STATE_SOURCE = "status_folders_and_reply_queue_records"
+
+LEGACY_ROOT_ERROR = (
+    "Legacy GitHub review workflow root exists at 'GitHub Reviews', but the "
+    "default root is now '.github-review-workflow'. Pass "
+    "--out-root 'GitHub Reviews' to continue using the legacy root, or move "
+    "or export state to '.github-review-workflow'."
+)
 
 RESOLVE_REVIEW_THREAD_MUTATION = """\
 mutation($threadId: ID!) {
@@ -43,6 +53,18 @@ def run_json(command: list[str], stdin: str | None = None) -> dict[str, Any]:
 
 def ensure_gh_authenticated() -> None:
     run_command(["gh", "auth", "status"])
+
+
+def resolve_review_out_root(out_root: str | None, *, cwd: Path | None = None) -> Path:
+    if out_root is not None:
+        return Path(out_root)
+
+    base = cwd or Path.cwd()
+    default_path = base / DEFAULT_OUT_ROOT
+    legacy_path = base / LEGACY_OUT_ROOT
+    if legacy_path.exists() and not default_path.exists():
+        raise RuntimeError(LEGACY_ROOT_ERROR)
+    return DEFAULT_OUT_ROOT
 
 
 def parse_pr_url(pr_url: str) -> tuple[str, str, int]:

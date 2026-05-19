@@ -8,7 +8,7 @@ front, address accepted stacked-review fixes in a new top-of-stack PR, and post
 accurate review-thread replies as the GitHub ledger of what was handled.
 
 This reference lives inside the skill. The bundled scripts generate review
-bundles under `GitHub Reviews/` in the current project.
+bundles under `.github-review-workflow/` in the current project.
 
 The workflow exists to avoid these failure modes:
 
@@ -28,12 +28,12 @@ lower priority by default. Summary review wrappers are context, not work items.
 
 ## Bundle Layout
 
-Each PR exports to `GitHub Reviews/pr-<number>-<slug>/`.
+Each PR exports to `.github-review-workflow/pr-<number>-<slug>/`.
 
 Expected files:
 
-- `README.md`: local index for the bundle
-- `manifest.json`: machine-readable export metadata
+- `README.md`: local export snapshot and index for the bundle
+- `manifest.json`: machine-readable export snapshot metadata
 - `context/01-coderabbit-walkthrough.md`: optional top-level context
 - `todo/`: review items not yet handled
 - `outside-diff/`: CodeRabbit outside-diff review-summary items; actionable but
@@ -65,7 +65,8 @@ Useful flags:
 - `--include-ai-prompts` preserves embedded `Prompt for AI Agents` sections;
   they are stripped by default
 - `--include-resolved` includes already-resolved inline review threads
-- `--out-root <path>` writes bundles somewhere other than `GitHub Reviews/`
+- `--out-root <path>` writes bundles somewhere other than
+  `.github-review-workflow/`
 
 Re-running the exporter preserves recognized local status placement and adds
 newly discovered inline threads to `todo/`, outside-diff comments to
@@ -74,12 +75,12 @@ newly discovered inline threads to `todo/`, outside-diff comments to
 After export, open:
 
 - `$SKILL_DIR/references/SOP.md`
-- `GitHub Reviews/pr-<number>-<slug>/README.md`
-- `GitHub Reviews/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
-- all files in `GitHub Reviews/pr-<number>-<slug>/todo/`
-- all files in `GitHub Reviews/pr-<number>-<slug>/outside-diff/` if it exists;
+- `.github-review-workflow/pr-<number>-<slug>/README.md`
+- `.github-review-workflow/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
+- all files in `.github-review-workflow/pr-<number>-<slug>/todo/`
+- all files in `.github-review-workflow/pr-<number>-<slug>/outside-diff/` if it exists;
   triage them as local-only items because GitHub could not place them inline
-- all files in `GitHub Reviews/pr-<number>-<slug>/nitpicks/` if it exists;
+- all files in `.github-review-workflow/pr-<number>-<slug>/nitpicks/` if it exists;
   triage them as lower-priority local-only items unless the user asked to
   handle them now
 
@@ -282,7 +283,7 @@ Useful queue commands:
 - `recover-posting <draft-id> --posted-reply-url <url> [--dry-run]`
 - `recover-posting <draft-id> --no-reply-posted [--dry-run]`
 
-Queue records live under `GitHub Reviews/reply-queue/`, one JSON file per
+Queue records live under `.github-review-workflow/reply-queue/`, one JSON file per
 draft. They use stable GitHub identity fields; file paths are only locators.
 The queue refuses duplicate active drafts for the same thread and disposition.
 

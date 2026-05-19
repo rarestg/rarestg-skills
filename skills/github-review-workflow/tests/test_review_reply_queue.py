@@ -51,7 +51,7 @@ class ReviewReplyQueueTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
         self.root = Path(self.temp_dir.name)
-        self.out_root = self.root / "GitHub Reviews"
+        self.out_root = self.root / queue.DEFAULT_OUT_ROOT
         self.bundle = self.out_root / "pr-0002-example-pr"
         self.todo_dir = self.bundle / "todo"
         self.done_dir = self.bundle / "done"
