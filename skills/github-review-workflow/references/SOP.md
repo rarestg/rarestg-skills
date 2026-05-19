@@ -279,6 +279,8 @@ Useful queue commands:
 - `set-fix-pr --all-pending-fixed <fix-pr-url>`
 - `post <draft-id> [--dry-run]`
 - `post-pending [--fix-pr-url <fix-pr-url>] [--dry-run]`
+- `recover-posting <draft-id> --posted-reply-url <url> [--dry-run]`
+- `recover-posting <draft-id> --no-reply-posted [--dry-run]`
 
 Queue records live under `GitHub Reviews/reply-queue/`, one JSON file per
 draft. They use stable GitHub identity fields; file paths are only locators.
@@ -292,8 +294,9 @@ Reply templates:
 The queue state is the recovery record:
 
 - `pending`: draft exists but has not posted
-- `posting`: mutation started; if left here without a reply URL, inspect GitHub
-  before retrying to avoid a duplicate reply
+- `posting`: mutation started; if left here without a reply URL, inspect GitHub,
+  then use `recover-posting` with either the verified reply URL or
+  `--no-reply-posted` before retrying
 - `failed`: posting failed before a reply URL was recorded; item remains unmoved
 - `move_pending` or `move_failed`: reply URL was recorded; rerun `post` to move
   the item without reposting
