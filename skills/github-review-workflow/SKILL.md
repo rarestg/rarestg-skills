@@ -97,16 +97,14 @@ python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
   --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr>
 ```
 
-Declined comments can use the same queue:
+Declined comments can use the same queue. `add-declined` prints a draft ID; use
+that ID for immediate posting:
 
 ```bash
 python3 "$SKILL_DIR/scripts/review_reply_queue.py" add-declined <review-item-file> \
   --reason '<reason>'
-python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
-  --source-pr <reviewed-pr-number> \
-  --dry-run
-python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
-  --source-pr <reviewed-pr-number>
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post <declined-draft-id> --dry-run
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post <declined-draft-id>
 ```
 
 Use `post_github_review_followup.py` only as a direct single-item escape hatch.

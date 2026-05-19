@@ -337,6 +337,13 @@ python3 "$SKILL_DIR/scripts/review_reply_queue.py" add-declined <review-item-fil
   --reason '<reason>'
 ```
 
+For immediate declined replies, use the draft ID printed by `add-declined`:
+
+```bash
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post <declined-draft-id> --dry-run
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post <declined-draft-id>
+```
+
 After creating the new top-of-stack PR, attach its URL and post:
 
 ```bash
