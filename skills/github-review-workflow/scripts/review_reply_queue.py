@@ -36,7 +36,6 @@ ACTIVE_DUPLICATE_STATUSES = {
     "move_pending",
     "move_failed",
     "failed",
-    "posted",
 }
 
 
@@ -119,6 +118,16 @@ def draft_id_for(
         ).encode("utf-8")
     ).hexdigest()[:16]
     return f"pr{source_pr_number}-{disposition}-{digest}"
+
+
+def next_available_draft_id(out_root: Path, base_draft_id: str) -> str:
+    if not queue_path(out_root, base_draft_id).exists():
+        return base_draft_id
+
+    cycle = 2
+    while queue_path(out_root, f"{base_draft_id}-{cycle}").exists():
+        cycle += 1
+    return f"{base_draft_id}-{cycle}"
 
 
 def render_fixed_reply(
@@ -237,13 +246,14 @@ def build_base_draft(
         )
 
     now = utc_now()
-    draft_id = draft_id_for(
+    base_draft_id = draft_id_for(
         owner=owner,
         repo=repo,
         source_pr_number=source_pr_number,
         thread_id=thread_id,
         disposition=disposition,
     )
+    draft_id = next_available_draft_id(out_root, base_draft_id)
     primary_comment_database_id = metadata.get("Primary Comment Database ID")
     discussion_url = metadata.get("Discussion URL")
     draft = {
@@ -556,6 +566,42 @@ def post_draft(
     return draft
 
 
+def recover_posting_draft(
+    *,
+    out_root: Path,
+    draft: dict[str, Any],
+    posted_reply_url: str | None = None,
+    no_reply_posted: bool = False,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    if draft.get("status") != "posting":
+        raise QueueError(f"Draft {draft['id']} is not in posting state.")
+    if bool(metadata_value_present(posted_reply_url)) == no_reply_posted:
+        raise QueueError(
+            "Provide exactly one posting recovery outcome: "
+            "--posted-reply-url or --no-reply-posted."
+        )
+
+    recovered = dict(draft)
+    recovered["last_error"] = None
+
+    if metadata_value_present(posted_reply_url):
+        recovered["status"] = "move_pending"
+        recovered["posted_reply_url"] = str(posted_reply_url)
+        recovered["posted_at"] = recovered.get("posted_at") or utc_now()
+        if not dry_run:
+            save_draft(out_root, recovered)
+        return post_draft(out_root=out_root, draft=recovered, dry_run=dry_run)
+
+    recovered["status"] = "failed"
+    recovered["last_error"] = (
+        "Manual inspection confirmed no reply was posted; retry is allowed."
+    )
+    if not dry_run:
+        save_draft(out_root, recovered)
+    return recovered
+
+
 def print_draft_summary(draft: dict[str, Any]) -> None:
     print(
         "\t".join(
@@ -689,6 +735,22 @@ def command_post_pending(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
+def command_recover_posting(args: argparse.Namespace) -> int:
+    out_root = Path(args.out_root)
+    draft = load_draft(out_root, args.draft_id)
+    recovered = recover_posting_draft(
+        out_root=out_root,
+        draft=draft,
+        posted_reply_url=args.posted_reply_url,
+        no_reply_posted=args.no_reply_posted,
+        dry_run=args.dry_run,
+    )
+    print(recovered["id"])
+    if recovered.get("posted_reply_url"):
+        print(recovered["posted_reply_url"])
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Queue and post durable GitHub review-thread replies."
@@ -736,6 +798,16 @@ def build_parser() -> argparse.ArgumentParser:
     post_pending_parser.add_argument("--fix-pr-url")
     post_pending_parser.add_argument("--dry-run", action="store_true")
     post_pending_parser.set_defaults(func=command_post_pending)
+
+    recover_posting_parser = subparsers.add_parser("recover-posting")
+    recover_posting_parser.add_argument("draft_id")
+    recovery_outcome = recover_posting_parser.add_mutually_exclusive_group(
+        required=True
+    )
+    recovery_outcome.add_argument("--posted-reply-url")
+    recovery_outcome.add_argument("--no-reply-posted", action="store_true")
+    recover_posting_parser.add_argument("--dry-run", action="store_true")
+    recover_posting_parser.set_defaults(func=command_recover_posting)
 
     return parser
 

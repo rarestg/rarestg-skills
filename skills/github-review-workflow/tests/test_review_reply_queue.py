@@ -101,6 +101,34 @@ class ReviewReplyQueueTests(unittest.TestCase):
                 summary="Use the shared helper again.",
             )
 
+    def test_posted_draft_does_not_block_new_cycle_or_get_overwritten(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+            fix_pr_url="https://github.com/example/repo/pull/6",
+        )
+        draft["status"] = "posted"
+        draft["posted_reply_url"] = "https://github.com/example/repo/pull/2#reply"
+        queue.save_draft(self.out_root, draft)
+
+        next_draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Handle the follow-up request.",
+            fix_pr_url="https://github.com/example/repo/pull/7",
+        )
+
+        self.assertNotEqual(draft["id"], next_draft["id"])
+        saved_old = self.load_draft_json(draft["id"])
+        saved_new = self.load_draft_json(next_draft["id"])
+        self.assertEqual("posted", saved_old["status"])
+        self.assertEqual("pending", saved_new["status"])
+        self.assertEqual(
+            "https://github.com/example/repo/pull/2#reply",
+            saved_old["posted_reply_url"],
+        )
+
     def test_declined_draft_renders_reply_body(self) -> None:
         draft = queue.add_declined(
             out_root=self.out_root,
@@ -234,6 +262,57 @@ class ReviewReplyQueueTests(unittest.TestCase):
         saved = self.load_draft_json(draft["id"])
         self.assertEqual("posting", saved["status"])
         self.assertIn("Inspect GitHub", saved["last_error"])
+
+    def test_recover_posting_with_verified_reply_url_moves_without_reposting(self) -> None:
+        draft = queue.add_declined(
+            out_root=self.out_root,
+            item_path=self.item,
+            reason="The existing behavior is intentional.",
+        )
+        draft["status"] = "posting"
+        draft["last_error"] = "Missing reply URL."
+        queue.save_draft(self.out_root, draft)
+
+        with patch.object(queue, "post_review_reply") as post_reply:
+            recovered = queue.recover_posting_draft(
+                out_root=self.out_root,
+                draft=queue.load_draft(self.out_root, draft["id"]),
+                posted_reply_url="https://github.com/example/repo/pull/2#reply",
+            )
+
+        post_reply.assert_not_called()
+        self.assertEqual("posted", recovered["status"])
+        self.assertEqual(
+            "https://github.com/example/repo/pull/2#reply",
+            recovered["posted_reply_url"],
+        )
+        self.assertFalse(self.item.exists())
+        self.assertTrue((self.ignored_dir / self.item.name).exists())
+        saved = self.load_draft_json(draft["id"])
+        self.assertEqual("posted", saved["status"])
+        self.assertIsNone(saved["last_error"])
+
+    def test_recover_posting_without_reply_marks_failed_for_retry(self) -> None:
+        draft = queue.add_declined(
+            out_root=self.out_root,
+            item_path=self.item,
+            reason="The existing behavior is intentional.",
+        )
+        draft["status"] = "posting"
+        draft["last_error"] = "Missing reply URL."
+        queue.save_draft(self.out_root, draft)
+
+        recovered = queue.recover_posting_draft(
+            out_root=self.out_root,
+            draft=queue.load_draft(self.out_root, draft["id"]),
+            no_reply_posted=True,
+        )
+
+        self.assertEqual("failed", recovered["status"])
+        self.assertIn("no reply was posted", recovered["last_error"])
+        self.assertTrue(self.item.exists())
+        saved = self.load_draft_json(draft["id"])
+        self.assertEqual("failed", saved["status"])
 
     def test_move_failure_can_recover_without_reposting(self) -> None:
         draft = queue.add_fixed(
