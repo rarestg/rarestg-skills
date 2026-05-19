@@ -119,6 +119,11 @@ git push --force-with-lease
 
 Always `--force-with-lease`, never `--force`.
 
+Exception: review-comment cleanup on an active PR stack may intentionally land
+in a new follow-up PR above the current stack top instead of amending an older
+reviewed branch. Use the `github-review-workflow` queue when original review
+threads need replies that reference that follow-up PR.
+
 ## Branch Naming
 
 Pattern: `<feature>/<NN>-<short-description>`

@@ -4,8 +4,8 @@
 
 Turn a GitHub PR URL into a clean local queue of review threads plus separate
 CodeRabbit outside-diff and nitpick queues, then triage the full bundle up
-front, address accepted work locally, and post accurate review-thread replies
-as the GitHub ledger of what was handled.
+front, address accepted stacked-review fixes in a new top-of-stack PR, and post
+accurate review-thread replies as the GitHub ledger of what was handled.
 
 This reference lives inside the skill. The bundled scripts generate review
 bundles under `GitHub Reviews/` in the current project.
@@ -15,6 +15,8 @@ The workflow exists to avoid these failure modes:
 - treating summary reviews as the action queue
 - blindly implementing every bot suggestion
 - pushing partial fixes that repeatedly retrigger review automation
+- amending older PR branches in a stack and forcing downstream rebase churn
+- losing track of deferred review replies while waiting for a follow-up PR URL
 
 ## Queues
 
@@ -37,15 +39,15 @@ Expected files:
 - `outside-diff/`: CodeRabbit outside-diff review-summary items; actionable but
   not thread-backed
 - `nitpicks/`: CodeRabbit nitpick summary items, lower priority than `todo/`
-- `done/`: accepted, locally implemented, audited, and replied to when
-  thread-backed
+- `done/`: accepted, implemented, audited, and replied to when thread-backed
 - `ignored/`: declined after merit, scope, or audit review, and replied to when
   thread-backed
+- `../reply-queue/`: global durable JSON drafts for GitHub review-thread replies
 
 Thread-backed review item files include the IDs needed for follow-up replies.
 Outside-diff and nitpick files are not GitHub review threads and must not use
-the bundled follow-up script. Do not delete review files; folder placement is
-the status record.
+the bundled follow-up or reply-queue scripts. Do not delete review files; folder
+placement is the status record.
 
 ## Export
 
@@ -97,26 +99,30 @@ Global triage is for context, deduplication, grouping, and ordering. Execution
 must still happen in bounded, auditable work units rather than as one large
 undifferentiated change.
 
-## Local Base
+## Stack-Aware Base
 
-Before editing, make sure you are on the right local base for the fixes. Check
-the stack only when the current branch, PR head, or intended fix branch is
-ambiguous.
+Before editing, make sure you are on the right local base for the fixes. For
+stacked PR review-comment cleanup, the right base is the current top of the
+stack, not the branch that originally received the comment.
 
-Default behavior keeps code changes local:
+Default branch behavior:
 
-- do not commit, push, create PRs, resolve GitHub threads, or update the
-  reviewed PR branch unless explicitly requested
-- do not create a branch unless explicitly requested
+- do not amend, rebase, force-push, or otherwise update older reviewed PR
+  branches for review-comment fixes
+- if the reviewed PR is lower in the stack, put accepted fixes on a new branch
+  from the current top-of-stack branch and create a new PR above it when the
+  user asked for stacked review follow-through
+- if the reviewed PR is not part of a stack and the user did not ask for PR
+  follow-through, keep code changes local and use the direct follow-up script
 - if the current branch is not the intended local base, ask before switching
-  branches
-- if the reviewed PR is lower in the stack, report the likely top-of-stack base
-  and ask before switching unless the user already made the target branch clear
+  branches unless the user already made the target branch clear
 - if the correct local base is ambiguous, stop and ask the user which branch or
   worktree should receive the fix
 
-If the PR appears stacked, identify the likely top-of-stack base and report it
-in the final handoff.
+This is an intentional exception to the normal stacked-diffs maintenance rule
+that earlier diffs may be updated and downstream branches rebased. For review
+comment cleanup on an active stack, avoid rebase churn and put the correction in
+a follow-up PR above the current stack top.
 
 ## Review Loop
 
@@ -136,21 +142,23 @@ For each work unit:
    files, relevant item files, and implementation constraints. Do not hand over
    the full queue.
 6. Audit the final diff yourself, including worker output.
-7. Audit the relevant diff/status before replying. Do not stage changes by
-   default.
-8. For each thread-backed item in the work unit, post the GitHub reply before
-   moving the file:
-   - accepted: `Addressed locally but not pushed: <summary>`
-   - ignored: `Not taking this change: <reason>`
+7. Audit the relevant diff/status before queueing a reply. Do not stage changes
+   unless preparing the explicit follow-up PR.
+8. For each thread-backed item in the work unit, create a durable reply draft:
+   - accepted stacked fix: queue `fixed`; reply is blocked until the fix PR URL
+     exists
+   - ignored, declined, or obsolete: queue `declined`; reply can post
+     immediately or with the next queue flush
 9. Move local item files only after the required reply succeeds:
-   - `done/` for accepted fixes implemented locally, audited, and replied to
-   - `ignored/` for items not taken locally after merit, scope, or audit review,
-     with the reason replied to on GitHub
+   - `done/` for accepted fixes implemented, audited, visible in the follow-up
+     PR, and replied to
+   - `ignored/` for items not taken after merit, scope, or audit review, with
+     the reason replied to on GitHub
 
-Do not resolve GitHub threads as part of the default loop. Leave accepted fixes
-in the current working tree and report back. If reply posting fails, leave the
-item in `todo/`, report the blocker, and do not mark it `done/` or `ignored/`
-unless the user explicitly chooses to skip the GitHub reply.
+Do not resolve GitHub threads as part of the default loop. If reply posting
+fails, leave the item in `todo/`, report the blocker, and do not mark it `done/`
+or `ignored/`. If a reply posts but moving the local item fails, rerun the queue
+post command; it must move the file without reposting the reply.
 
 ## Outside-Diff Loop
 
@@ -217,14 +225,12 @@ unit:
 Workers must reassess merit, make the smallest defensible fix if valid, avoid
 unrelated files, and leave final status-folder movement to the orchestrator.
 
-## GitHub Replies And Follow-Through
+## Reply Queue Lifecycle
 
 For thread-backed `todo/` items, GitHub replies are part of the default ledger.
-Post the reply after local audit and before moving the item file. Keep every
-reply accurate about visibility: if the fix only exists in the working tree,
-say that it was addressed locally but not pushed.
-Review-thread replies are the one default GitHub mutation; commits, pushes, PR
-creation, branch updates, and thread resolution remain opt-in.
+For stacked review fixes, queue replies after local audit, then post them only
+after the new top-of-stack PR exists. Keep every reply accurate about visibility:
+fixed replies must name the PR where the fix is visible.
 
 Before posting a reply, audit the relevant local diff/status:
 
@@ -233,34 +239,77 @@ git status --short
 git diff -- <changed-files>
 ```
 
-Use this to verify the reply is true and to summarize changed files and checks
-in the final handoff. Do not `git add` by default; staging can interfere with
-the user's commit plan.
+Use this to verify the queued reply is true and to summarize changed files and
+checks in the final handoff. Do not `git add` unless preparing the follow-up PR.
 
-Do not resolve review threads while fixes exist only in the working tree unless
-the user explicitly requests resolution.
+Create fixed drafts with:
 
-Post with:
+```bash
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" add-fixed <review-item-file> \
+  --summary '<summary>'
+```
+
+If the fix PR already exists, include it immediately:
+
+```bash
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" add-fixed <review-item-file> \
+  --summary '<summary>' \
+  --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr>
+```
+
+Create declined drafts with:
+
+```bash
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" add-declined <review-item-file> \
+  --reason '<reason>'
+```
+
+After creating the new top-of-stack PR, attach its URL and post:
+
+```bash
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr>
+```
+
+Useful queue commands:
+
+- `list [--status pending|posting|failed|move_pending|move_failed|posted]`
+- `show <draft-id>`
+- `set-fix-pr <draft-id> <fix-pr-url>`
+- `set-fix-pr --all-pending-fixed <fix-pr-url>`
+- `post <draft-id> [--dry-run]`
+- `post-pending [--fix-pr-url <fix-pr-url>] [--dry-run]`
+
+Queue records live under `GitHub Reviews/reply-queue/`, one JSON file per
+draft. They use stable GitHub identity fields; file paths are only locators.
+The queue refuses duplicate active drafts for the same thread and disposition.
+
+Reply templates:
+
+- accepted in follow-up PR: `Addressed in <pr-url>: <summary>`
+- declined or obsolete: `Not taking this change: <reason>`
+
+The queue state is the recovery record:
+
+- `pending`: draft exists but has not posted
+- `posting`: mutation started; if left here without a reply URL, inspect GitHub
+  before retrying to avoid a duplicate reply
+- `failed`: posting failed before a reply URL was recorded; item remains unmoved
+- `move_pending` or `move_failed`: reply URL was recorded; rerun `post` to move
+  the item without reposting
+- `posted`: reply posted and local item moved
+
+Use the direct follow-up script only as a single-item escape hatch, mostly for
+non-stacked local-first work:
 
 ```bash
 python3 "$SKILL_DIR/scripts/post_github_review_followup.py" <review-item-file> \
   --reply '<accurate reply>'
 ```
 
-Reply templates:
-
-- accepted locally: `Addressed locally but not pushed: <summary>`
-- accepted in an explicitly requested follow-up PR: `Addressed in <pr-url>: <summary>`
-- ignored: `Not taking this change: <reason>`
-
-Add `--resolve` only when the user explicitly requested thread resolution and
-the fix or final disposition is visible on GitHub in the intended branch or PR.
-
-Useful flags:
-
-- `--dry-run` to show the target commands without mutating GitHub
-- `--show-metadata` to inspect the parsed IDs
-- `--reply-file -` to read a multi-line reply from stdin
+With the direct follow-up script, add `--resolve` only when the user explicitly
+requested thread resolution and the fix or final disposition is visible on
+GitHub in the intended branch or PR.
 
 ## Final Handoff
 
@@ -274,8 +323,6 @@ End with a compact local handoff:
 - GitHub replies posted, skipped, or failed
 - whether any thread resolution, commit, push, PR, or branch update was avoided
   or explicitly performed
-- current branch and suggested stacked-PR base if follow-up PR creation is
-  desired
+- current branch, follow-up PR URL if created, and any remaining queued drafts
 
-Do not create the stacked branch, create a PR, push, or resolve threads unless
-the user explicitly asks for that follow-up.
+Do not resolve threads unless the user explicitly asks for that follow-up.
