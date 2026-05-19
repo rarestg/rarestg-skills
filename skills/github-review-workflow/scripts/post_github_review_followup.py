@@ -13,52 +13,17 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any
 
 from github_review_utils import (
     ensure_gh_authenticated,
     metadata_value_present,
     parse_pr_url,
-    run_json,
+    parse_review_item_metadata,
+    post_review_reply,
+    reply_url_from_response,
+    resolve_review_thread,
+    resolved_thread_from_response,
 )
-
-TOP_SECTION_END = "---"
-
-RESOLVE_REVIEW_THREAD_MUTATION = """\
-mutation($threadId: ID!) {
-  resolveReviewThread(input: { threadId: $threadId }) {
-    thread {
-      id
-      isResolved
-    }
-  }
-}
-"""
-
-
-def parse_review_item_metadata(path: Path) -> dict[str, str]:
-    content = path.read_text(encoding="utf-8")
-    top_section = content.split(f"\n{TOP_SECTION_END}\n", 1)[0]
-    metadata: dict[str, str] = {}
-
-    for line in top_section.splitlines():
-        # only parse the top header block before the first horizontal rule
-        if ":" not in line:
-            continue
-        key, value = line.split(":", 1)
-        metadata[key.strip()] = value.strip()
-
-    required_keys = [
-        "PR URL",
-        "Thread ID",
-    ]
-    missing = [key for key in required_keys if not metadata_value_present(metadata.get(key))]
-    if missing:
-        raise ValueError(
-            f"Review item file is missing required metadata: {', '.join(missing)}"
-        )
-
-    return metadata
 
 
 def load_reply_text(args: argparse.Namespace) -> str | None:
@@ -74,70 +39,6 @@ def load_reply_text(args: argparse.Namespace) -> str | None:
         return Path(args.reply_file).read_text(encoding="utf-8").strip()
 
     return None
-
-
-def post_reply(
-    *,
-    owner: str,
-    repo: str,
-    pull_number: int,
-    comment_database_id: str,
-    reply_body: str,
-) -> dict[str, Any]:
-    return run_json(
-        [
-            "gh",
-            "api",
-            f"repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_database_id}/replies",
-            "-X",
-            "POST",
-            "-f",
-            f"body={reply_body}",
-        ]
-    )
-
-
-def resolve_thread(thread_id: str) -> dict[str, Any]:
-    return run_json(
-        [
-            "gh",
-            "api",
-            "graphql",
-            "-F",
-            "query=@-",
-            "-F",
-            f"threadId={thread_id}",
-        ],
-        stdin=RESOLVE_REVIEW_THREAD_MUTATION,
-    )
-
-
-def resolved_thread_from_response(response: dict[str, Any]) -> dict[str, Any]:
-    errors = response.get("errors")
-    if errors:
-        raise RuntimeError(
-            "GitHub GraphQL returned errors while resolving the thread:\n"
-            f"{json.dumps(errors, indent=2)}"
-        )
-
-    thread = (
-        response.get("data", {})
-        .get("resolveReviewThread", {})
-        .get("thread")
-    )
-    if not isinstance(thread, dict):
-        raise RuntimeError(
-            "GitHub GraphQL resolve response did not include a thread:\n"
-            f"{json.dumps(response, indent=2)}"
-        )
-
-    if thread.get("isResolved") is not True:
-        raise RuntimeError(
-            "GitHub GraphQL did not mark the thread resolved:\n"
-            f"{json.dumps(thread, indent=2)}"
-        )
-
-    return thread
 
 
 def print_metadata(metadata: dict[str, str], *, owner: str, repo: str, number: int) -> None:
@@ -183,7 +84,10 @@ def main() -> int:
 
     try:
         review_item_path = Path(args.review_item)
-        metadata = parse_review_item_metadata(review_item_path)
+        metadata = parse_review_item_metadata(
+            review_item_path,
+            required_keys=("PR URL", "Thread ID"),
+        )
         owner, repo, number = parse_pr_url(metadata["PR URL"])
         reply_text = load_reply_text(args)
         primary_comment_database_id = metadata.get("Primary Comment Database ID", "n/a")
@@ -207,7 +111,8 @@ def main() -> int:
                 print("\n[DRY RUN] Would post reply:")
                 print(
                     "gh api "
-                    f"repos/{owner}/{repo}/pulls/{number}/comments/{primary_comment_database_id}/replies "
+                    f"repos/{owner}/{repo}/pulls/{number}/comments/"
+                    f"{primary_comment_database_id}/replies "
                     "-X POST "
                     f"-f body={reply_text!r}"
                 )
@@ -229,7 +134,7 @@ def main() -> int:
                     "Primary Comment Database ID is missing from the review item file; "
                     "cannot post a reply."
                 )
-            reply_response = post_reply(
+            reply_response = post_review_reply(
                 owner=owner,
                 repo=repo,
                 pull_number=number,
@@ -237,12 +142,12 @@ def main() -> int:
                 reply_body=reply_text,
             )
             print("\nReply posted:")
-            print(reply_response.get("html_url") or reply_response.get("url") or reply_response)
+            print(reply_url_from_response(reply_response) or reply_response)
             reply_posted = True
 
         if args.resolve:
             try:
-                resolve_response = resolve_thread(metadata["Thread ID"])
+                resolve_response = resolve_review_thread(metadata["Thread ID"])
                 thread = resolved_thread_from_response(resolve_response)
             except Exception as error:
                 if reply_posted:

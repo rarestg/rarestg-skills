@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+from pathlib import Path
 from typing import Any
 
 PR_URL_PATTERN = re.compile(
@@ -10,6 +11,18 @@ PR_URL_PATTERN = re.compile(
 )
 
 MISSING_METADATA_VALUES = {"", "n/a", "none", "null"}
+REVIEW_ITEM_TOP_SECTION_END = "---"
+
+RESOLVE_REVIEW_THREAD_MUTATION = """\
+mutation($threadId: ID!) {
+  resolveReviewThread(input: { threadId: $threadId }) {
+    thread {
+      id
+      isResolved
+    }
+  }
+}
+"""
 
 
 def run_command(command: list[str], stdin: str | None = None) -> str:
@@ -49,3 +62,101 @@ def metadata_value_present(value: str | None) -> bool:
     if value is None:
         return False
     return value.strip().lower() not in MISSING_METADATA_VALUES
+
+
+def parse_review_item_metadata(
+    path: Path,
+    *,
+    required_keys: list[str] | tuple[str, ...] = (),
+) -> dict[str, str]:
+    content = path.read_text(encoding="utf-8")
+    top_section = content.split(f"\n{REVIEW_ITEM_TOP_SECTION_END}\n", 1)[0]
+    metadata: dict[str, str] = {}
+
+    for line in top_section.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        metadata[key.strip()] = value.strip()
+
+    missing = [key for key in required_keys if not metadata_value_present(metadata.get(key))]
+    if missing:
+        raise ValueError(
+            f"Review item file is missing required metadata: {', '.join(missing)}"
+        )
+
+    return metadata
+
+
+def post_review_reply(
+    *,
+    owner: str,
+    repo: str,
+    pull_number: int,
+    comment_database_id: str,
+    reply_body: str,
+) -> dict[str, Any]:
+    return run_json(
+        [
+            "gh",
+            "api",
+            f"repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_database_id}/replies",
+            "-X",
+            "POST",
+            "-f",
+            f"body={reply_body}",
+        ]
+    )
+
+
+def reply_url_from_response(response: dict[str, Any]) -> str | None:
+    html_url = response.get("html_url")
+    if isinstance(html_url, str) and html_url:
+        return html_url
+    url = response.get("url")
+    if isinstance(url, str) and url:
+        return url
+    return None
+
+
+def resolve_review_thread(thread_id: str) -> dict[str, Any]:
+    return run_json(
+        [
+            "gh",
+            "api",
+            "graphql",
+            "-F",
+            "query=@-",
+            "-F",
+            f"threadId={thread_id}",
+        ],
+        stdin=RESOLVE_REVIEW_THREAD_MUTATION,
+    )
+
+
+def resolved_thread_from_response(response: dict[str, Any]) -> dict[str, Any]:
+    errors = response.get("errors")
+    if errors:
+        raise RuntimeError(
+            "GitHub GraphQL returned errors while resolving the thread:\n"
+            f"{json.dumps(errors, indent=2)}"
+        )
+
+    thread = (
+        response.get("data", {})
+        .get("resolveReviewThread", {})
+        .get("thread")
+    )
+    if not isinstance(thread, dict):
+        raise RuntimeError(
+            "GitHub GraphQL resolve response did not include a thread:\n"
+            f"{json.dumps(response, indent=2)}"
+        )
+
+    if thread.get("isResolved") is not True:
+        raise RuntimeError(
+            "GitHub GraphQL did not mark the thread resolved:\n"
+            f"{json.dumps(thread, indent=2)}"
+        )
+
+    return thread
