@@ -128,9 +128,10 @@ query($threadId: ID!, $commentsCursor: String) {
 OUT_ROOT_GITIGNORE = "*\n"
 LEGACY_OUT_ROOT_GITIGNORES = ("*\n!.gitignore\n", "*\n!.gitignore\n!SOP.md\n")
 STATE_SOURCE_NOTE = (
-    "This README and manifest are export snapshots. Current item status is "
+    "This README and `manifest.json` are export snapshots: they show what was "
+    "included in this export run, not live queue state. Current item status is "
     "the item's folder placement (`todo/`, `outside-diff/`, `nitpicks/`, "
-    "`done/`, or `ignored/`) plus review-thread reply records under "
+    "`done/`, or `ignored/`) plus PR-scoped review-thread reply records under "
     "`../reply-queue/`."
 )
 REVIEW_ITEM_TOP_SECTION_END = "---"
@@ -1112,6 +1113,84 @@ def write_review_summary_item_files(
     return manifest_items
 
 
+def count_items_by_status(items: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        status = item.get("status_folder") or "unknown"
+        counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
+def render_status_breakdown(
+    items: list[dict[str, Any]],
+    *,
+    primary_status: str,
+    optional_statuses: tuple[str, ...],
+) -> str:
+    counts = count_items_by_status(items)
+    parts = [f"{primary_status} {counts.get(primary_status, 0)}"]
+    for status in optional_statuses:
+        count = counts.get(status, 0)
+        if count:
+            parts.append(f"{status} {count}")
+    known_statuses = {primary_status, *optional_statuses}
+    for status in sorted(status for status in counts if status not in known_statuses):
+        parts.append(f"{status} {counts[status]}")
+    return ", ".join(parts)
+
+
+def next_read_paths(manifest: dict[str, Any]) -> list[str]:
+    paths = ["README.md", "manifest.json"]
+    walkthrough_file = manifest.get("walkthrough_file")
+    if walkthrough_file:
+        paths.append(str(walkthrough_file))
+    if any(
+        item.get("status_folder") == "todo"
+        for item in manifest["actionable_threads"]
+    ):
+        paths.append("todo/")
+    if any(
+        item.get("status_folder") == "outside-diff"
+        for item in manifest["outside_diff_comments"]
+    ):
+        paths.append("outside-diff/")
+    if any(item.get("status_folder") == "nitpicks" for item in manifest["nitpicks"]):
+        paths.append("nitpicks/")
+    return paths
+
+
+def render_export_summary(*, pr_dir: Path, manifest: dict[str, Any]) -> str:
+    pr = manifest["pull_request"]
+    actionable_threads = manifest["actionable_threads"]
+    outside_diff_comments = manifest["outside_diff_comments"]
+    nitpicks = manifest["nitpicks"]
+    review_summaries = manifest["review_summaries"]
+    walkthrough_file = manifest.get("walkthrough_file")
+    walkthrough_status = (
+        f"present ({walkthrough_file})" if walkthrough_file else "missing"
+    )
+    inline_breakdown = render_status_breakdown(
+        actionable_threads,
+        primary_status="todo",
+        optional_statuses=("done", "ignored"),
+    )
+
+    lines = [
+        "Export snapshot summary (included in this export; not live queue state)",
+        f"PR: #{pr['number']} {pr['title']}",
+        f"Bundle: {pr_dir}",
+        f"Walkthrough: {walkthrough_status}",
+        "Inline review threads: "
+        f"{len(actionable_threads)} included ({inline_breakdown})",
+        f"Outside-diff items: {len(outside_diff_comments)} included",
+        f"Nitpicks: {len(nitpicks)} included",
+        f"Review summaries: {len(review_summaries)} retained as metadata",
+        "Next reads (inside bundle):",
+    ]
+    lines.extend(f"- {path}" for path in next_read_paths(manifest))
+    return "\n".join(lines)
+
+
 def render_bundle_readme(
     *,
     pr: dict[str, Any],
@@ -1130,6 +1209,8 @@ def render_bundle_readme(
         f"PR URL: {pr['url']}",
         f"State: {pr['state']}",
         f"Generated: {manifest['generated_at']}",
+        "",
+        "## Status Model",
         "",
         STATE_SOURCE_NOTE,
         "",
@@ -1205,8 +1286,6 @@ def render_bundle_readme(
             "- CodeRabbit outside-diff comments and nitpicks come from structured "
             "`reviews` summary sections and are exported separately from actionable "
             "inline threads.",
-            "- This README and `manifest.json` describe one export run; they are "
-            "not updated when items are later moved.",
             "- Re-running export preserves existing `todo/`, `outside-diff/`, "
             "`nitpicks/`, `done/`, and `ignored/` placement for recognized items.",
             "- Existing local status files can remain on disk even when their "
@@ -1495,6 +1574,8 @@ def main() -> int:
         print(str(error), file=sys.stderr)
         return 1
 
+    manifest = json.loads((pr_dir / "manifest.json").read_text(encoding="utf-8"))
+    print(render_export_summary(pr_dir=pr_dir, manifest=manifest), file=sys.stderr)
     print(pr_dir)
     return 0
 

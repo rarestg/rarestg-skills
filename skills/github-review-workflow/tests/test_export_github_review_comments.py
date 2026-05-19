@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import io
+import json
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -18,10 +22,12 @@ from export_github_review_comments import (  # noqa: E402
     extract_coderabbit_outside_diff_comments,
     extract_nitpick_items_from_file_section,
     legacy_nitpick_identity_from_item,
+    main,
     nitpick_identity_from_item,
     nitpick_identity_from_metadata,
     parse_blockquoted_nitpick_file_sections,
     render_bundle_readme,
+    render_export_summary,
 )
 from github_review_utils import (  # noqa: E402
     DEFAULT_OUT_ROOT,
@@ -115,9 +121,124 @@ class ExportGithubReviewCommentsTests(unittest.TestCase):
 
         self.assertEqual(STATE_SOURCE, manifest["state_source"])
         self.assertIn("PR Review Bundle Snapshot", readme)
+        self.assertIn("## Status Model", readme)
         self.assertIn("export snapshots", readme)
+        self.assertIn("not live queue state", readme)
         self.assertIn("folder placement", readme)
         self.assertIn("../reply-queue/", readme)
+
+    def test_render_export_summary_orients_to_included_snapshot(self) -> None:
+        pr = {
+            "number": 4,
+            "title": "Export orientation",
+            "url": "https://github.com/example/repo/pull/4",
+            "state": "OPEN",
+        }
+        manifest = build_bundle_manifest(
+            pr=pr,
+            walkthrough_file="context/01-coderabbit-walkthrough.md",
+            actionable_threads=[
+                {"status_folder": "todo"},
+                {"status_folder": "done"},
+                {"status_folder": "ignored"},
+            ],
+            outside_diff_comments=[
+                {"status_folder": "outside-diff"},
+                {"status_folder": "ignored"},
+            ],
+            nitpicks=[
+                {"status_folder": "nitpicks"},
+            ],
+            review_summaries=[
+                {"id": "PRR_1"},
+                {"id": "PRR_2"},
+            ],
+        )
+
+        summary = render_export_summary(
+            pr_dir=Path(".github-review-workflow/pr-0004-export-orientation"),
+            manifest=manifest,
+        )
+
+        self.assertIn(
+            "Export snapshot summary (included in this export; not live queue state)",
+            summary,
+        )
+        self.assertIn("PR: #4 Export orientation", summary)
+        self.assertIn(
+            "Bundle: .github-review-workflow/pr-0004-export-orientation",
+            summary,
+        )
+        self.assertIn(
+            "Walkthrough: present (context/01-coderabbit-walkthrough.md)",
+            summary,
+        )
+        self.assertIn(
+            "Inline review threads: 3 included (todo 1, done 1, ignored 1)",
+            summary,
+        )
+        self.assertIn("Outside-diff items: 2 included", summary)
+        self.assertIn("Nitpicks: 1 included", summary)
+        self.assertIn("Review summaries: 2 retained as metadata", summary)
+        self.assertIn("- README.md", summary)
+        self.assertIn("- manifest.json", summary)
+        self.assertIn("- context/01-coderabbit-walkthrough.md", summary)
+        self.assertIn("- todo/", summary)
+        self.assertIn("- outside-diff/", summary)
+        self.assertIn("- nitpicks/", summary)
+
+    def test_main_prints_path_stdout_and_summary_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            bundle = root / ".github-review-workflow" / "pr-0009-summary"
+            pr = {
+                "number": 9,
+                "title": "Summary contract",
+                "url": "https://github.com/example/repo/pull/9",
+                "state": "OPEN",
+            }
+
+            def fake_export(**kwargs: object) -> Path:
+                self.assertEqual(root / ".github-review-workflow", kwargs["out_root"])
+                bundle.mkdir(parents=True)
+                manifest = build_bundle_manifest(
+                    pr=pr,
+                    walkthrough_file=None,
+                    actionable_threads=[{"status_folder": "todo"}],
+                    outside_diff_comments=[],
+                    nitpicks=[],
+                    review_summaries=[],
+                )
+                (bundle / "manifest.json").write_text(
+                    json.dumps(manifest),
+                    encoding="utf-8",
+                )
+                return bundle
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            argv = [
+                "export_github_review_comments.py",
+                "https://github.com/example/repo/pull/9",
+                "--out-root",
+                str(root / ".github-review-workflow"),
+            ]
+            with (
+                patch(
+                    "export_github_review_comments.export_review_bundle",
+                    side_effect=fake_export,
+                ),
+                patch.object(sys, "argv", argv),
+                redirect_stdout(stdout),
+                redirect_stderr(stderr),
+            ):
+                exit_code = main()
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(f"{bundle}\n", stdout.getvalue())
+            self.assertIn("Export snapshot summary", stderr.getvalue())
+            self.assertIn(f"Bundle: {bundle}", stderr.getvalue())
+            self.assertNotIn("Export snapshot summary", stdout.getvalue())
 
     def test_extracts_case_insensitive_combined_nitpick_heading(self) -> None:
         body = """
