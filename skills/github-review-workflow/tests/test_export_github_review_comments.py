@@ -1,21 +1,39 @@
 from __future__ import annotations
 
+import io
+import json
 import sys
+import tempfile
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from export_github_review_comments import (  # noqa: E402
+    LEGACY_OUT_ROOT_GITIGNORES,
+    OUT_ROOT_GITIGNORE,
+    build_bundle_manifest,
+    ensure_out_root_scaffold,
     extract_coderabbit_nitpicks,
     extract_coderabbit_outside_diff_comments,
     extract_nitpick_items_from_file_section,
     legacy_nitpick_identity_from_item,
+    main,
     nitpick_identity_from_item,
     nitpick_identity_from_metadata,
     parse_blockquoted_nitpick_file_sections,
+    render_bundle_readme,
+    render_export_summary,
+)
+from github_review_utils import (  # noqa: E402
+    DEFAULT_OUT_ROOT,
+    LEGACY_OUT_ROOT,
+    STATE_SOURCE,
+    resolve_review_out_root,
 )
 
 
@@ -30,6 +48,198 @@ def coderabbit_review(body: str) -> dict:
 
 
 class ExportGithubReviewCommentsTests(unittest.TestCase):
+    def test_default_out_root_uses_hidden_workflow_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            self.assertEqual(DEFAULT_OUT_ROOT, resolve_review_out_root(None, cwd=root))
+
+    def test_legacy_out_root_guard_requires_explicit_choice(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / LEGACY_OUT_ROOT).mkdir()
+
+            with self.assertRaisesRegex(RuntimeError, "--out-root 'GitHub Reviews'"):
+                resolve_review_out_root(None, cwd=root)
+
+            self.assertEqual(
+                LEGACY_OUT_ROOT,
+                resolve_review_out_root(str(LEGACY_OUT_ROOT), cwd=root),
+            )
+
+            (root / DEFAULT_OUT_ROOT).mkdir()
+            self.assertEqual(DEFAULT_OUT_ROOT, resolve_review_out_root(None, cwd=root))
+
+    def test_out_root_scaffold_ignores_entire_generated_root(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            out_root = Path(temp_dir) / DEFAULT_OUT_ROOT
+
+            ensure_out_root_scaffold(out_root)
+
+            self.assertEqual(
+                OUT_ROOT_GITIGNORE,
+                (out_root / ".gitignore").read_text(encoding="utf-8"),
+            )
+
+    def test_out_root_scaffold_rewrites_legacy_gitignore_scaffolds(self) -> None:
+        for legacy_gitignore in LEGACY_OUT_ROOT_GITIGNORES:
+            with self.subTest(legacy_gitignore=legacy_gitignore):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    out_root = Path(temp_dir) / DEFAULT_OUT_ROOT
+                    out_root.mkdir()
+                    gitignore_path = out_root / ".gitignore"
+                    gitignore_path.write_text(legacy_gitignore, encoding="utf-8")
+
+                    ensure_out_root_scaffold(out_root)
+
+                    self.assertEqual(
+                        OUT_ROOT_GITIGNORE,
+                        gitignore_path.read_text(encoding="utf-8"),
+                    )
+
+    def test_manifest_and_readme_describe_snapshot_status_model(self) -> None:
+        pr = {
+            "number": 7,
+            "title": "Example",
+            "url": "https://github.com/example/repo/pull/7",
+            "state": "OPEN",
+        }
+        manifest = build_bundle_manifest(
+            pr=pr,
+            walkthrough_file=None,
+            actionable_threads=[],
+            outside_diff_comments=[],
+            nitpicks=[],
+            review_summaries=[],
+        )
+
+        readme = render_bundle_readme(
+            pr=pr,
+            manifest=manifest,
+            has_walkthrough=False,
+        )
+
+        self.assertEqual(STATE_SOURCE, manifest["state_source"])
+        self.assertIn("PR Review Bundle Snapshot", readme)
+        self.assertIn("## Status Model", readme)
+        self.assertIn("export snapshots", readme)
+        self.assertIn("not live queue state", readme)
+        self.assertIn("folder placement", readme)
+        self.assertIn("../reply-queue/", readme)
+
+    def test_render_export_summary_orients_to_included_snapshot(self) -> None:
+        pr = {
+            "number": 4,
+            "title": "Export orientation",
+            "url": "https://github.com/example/repo/pull/4",
+            "state": "OPEN",
+        }
+        manifest = build_bundle_manifest(
+            pr=pr,
+            walkthrough_file="context/01-coderabbit-walkthrough.md",
+            actionable_threads=[
+                {"status_folder": "todo"},
+                {"status_folder": "done"},
+                {"status_folder": "ignored"},
+            ],
+            outside_diff_comments=[
+                {"status_folder": "outside-diff"},
+                {"status_folder": "ignored"},
+            ],
+            nitpicks=[
+                {"status_folder": "nitpicks"},
+            ],
+            review_summaries=[
+                {"id": "PRR_1"},
+                {"id": "PRR_2"},
+            ],
+        )
+
+        summary = render_export_summary(
+            pr_dir=Path(".github-review-workflow/pr-0004-export-orientation"),
+            manifest=manifest,
+        )
+
+        self.assertIn(
+            "Export snapshot summary (included in this export; not live queue state)",
+            summary,
+        )
+        self.assertIn("PR: #4 Export orientation", summary)
+        self.assertIn(
+            "Bundle: .github-review-workflow/pr-0004-export-orientation",
+            summary,
+        )
+        self.assertIn(
+            "Walkthrough: present (context/01-coderabbit-walkthrough.md)",
+            summary,
+        )
+        self.assertIn(
+            "Inline review threads: 3 included (todo 1, done 1, ignored 1)",
+            summary,
+        )
+        self.assertIn("Outside-diff items: 2 included", summary)
+        self.assertIn("Nitpicks: 1 included", summary)
+        self.assertIn("Review summaries: 2 retained as metadata", summary)
+        self.assertIn("- README.md", summary)
+        self.assertIn("- manifest.json", summary)
+        self.assertIn("- context/01-coderabbit-walkthrough.md", summary)
+        self.assertIn("- todo/", summary)
+        self.assertIn("- outside-diff/", summary)
+        self.assertIn("- nitpicks/", summary)
+
+    def test_main_prints_path_stdout_and_summary_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            bundle = root / ".github-review-workflow" / "pr-0009-summary"
+            pr = {
+                "number": 9,
+                "title": "Summary contract",
+                "url": "https://github.com/example/repo/pull/9",
+                "state": "OPEN",
+            }
+
+            def fake_export(**kwargs: object) -> Path:
+                self.assertEqual(root / ".github-review-workflow", kwargs["out_root"])
+                bundle.mkdir(parents=True)
+                manifest = build_bundle_manifest(
+                    pr=pr,
+                    walkthrough_file=None,
+                    actionable_threads=[{"status_folder": "todo"}],
+                    outside_diff_comments=[],
+                    nitpicks=[],
+                    review_summaries=[],
+                )
+                (bundle / "manifest.json").write_text(
+                    json.dumps(manifest),
+                    encoding="utf-8",
+                )
+                return bundle
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            argv = [
+                "export_github_review_comments.py",
+                "https://github.com/example/repo/pull/9",
+                "--out-root",
+                str(root / ".github-review-workflow"),
+            ]
+            with (
+                patch(
+                    "export_github_review_comments.export_review_bundle",
+                    side_effect=fake_export,
+                ),
+                patch.object(sys, "argv", argv),
+                redirect_stdout(stdout),
+                redirect_stderr(stderr),
+            ):
+                exit_code = main()
+
+            self.assertEqual(0, exit_code)
+            self.assertEqual(f"{bundle}\n", stdout.getvalue())
+            self.assertIn("Export snapshot summary", stderr.getvalue())
+            self.assertIn(f"Bundle: {bundle}", stderr.getvalue())
+            self.assertNotIn("Export snapshot summary", stdout.getvalue())
+
     def test_extracts_case_insensitive_combined_nitpick_heading(self) -> None:
         body = """
 <details><summary>Review NITPICK comments (1)</summary>

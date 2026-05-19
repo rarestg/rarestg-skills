@@ -8,7 +8,7 @@ front, address accepted stacked-review fixes in a new top-of-stack PR, and post
 accurate review-thread replies as the GitHub ledger of what was handled.
 
 This reference lives inside the skill. The bundled scripts generate review
-bundles under `GitHub Reviews/` in the current project.
+bundles under `.github-review-workflow/` in the current project.
 
 The workflow exists to avoid these failure modes:
 
@@ -28,12 +28,12 @@ lower priority by default. Summary review wrappers are context, not work items.
 
 ## Bundle Layout
 
-Each PR exports to `GitHub Reviews/pr-<number>-<slug>/`.
+Each PR exports to `.github-review-workflow/pr-<number>-<slug>/`.
 
 Expected files:
 
-- `README.md`: local index for the bundle
-- `manifest.json`: machine-readable export metadata
+- `README.md`: local export snapshot and index for the bundle
+- `manifest.json`: machine-readable export snapshot metadata
 - `context/01-coderabbit-walkthrough.md`: optional top-level context
 - `todo/`: review items not yet handled
 - `outside-diff/`: CodeRabbit outside-diff review-summary items; actionable but
@@ -65,7 +65,8 @@ Useful flags:
 - `--include-ai-prompts` preserves embedded `Prompt for AI Agents` sections;
   they are stripped by default
 - `--include-resolved` includes already-resolved inline review threads
-- `--out-root <path>` writes bundles somewhere other than `GitHub Reviews/`
+- `--out-root <path>` writes bundles somewhere other than
+  `.github-review-workflow/`
 
 Re-running the exporter preserves recognized local status placement and adds
 newly discovered inline threads to `todo/`, outside-diff comments to
@@ -74,12 +75,12 @@ newly discovered inline threads to `todo/`, outside-diff comments to
 After export, open:
 
 - `$SKILL_DIR/references/SOP.md`
-- `GitHub Reviews/pr-<number>-<slug>/README.md`
-- `GitHub Reviews/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
-- all files in `GitHub Reviews/pr-<number>-<slug>/todo/`
-- all files in `GitHub Reviews/pr-<number>-<slug>/outside-diff/` if it exists;
+- `.github-review-workflow/pr-<number>-<slug>/README.md`
+- `.github-review-workflow/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
+- all files in `.github-review-workflow/pr-<number>-<slug>/todo/`
+- all files in `.github-review-workflow/pr-<number>-<slug>/outside-diff/` if it exists;
   triage them as local-only items because GitHub could not place them inline
-- all files in `GitHub Reviews/pr-<number>-<slug>/nitpicks/` if it exists;
+- all files in `.github-review-workflow/pr-<number>-<slug>/nitpicks/` if it exists;
   triage them as lower-priority local-only items unless the user asked to
   handle them now
 
@@ -105,6 +106,29 @@ Before editing, make sure you are on the right local base for the fixes. For
 stacked PR review-comment cleanup, the right base is the current top of the
 stack, not the branch that originally received the comment.
 
+Run this preflight before editing:
+
+```bash
+reviewed_pr=<url-or-number>
+
+git status --short --branch
+git fetch origin --prune
+
+gh pr view "$reviewed_pr" \
+  --json number,title,url,state,headRefName,baseRefName,headRefOid,isDraft,mergeStateStatus
+
+gh pr list --state open --limit 100 \
+  --json number,title,url,headRefName,baseRefName,isDraft,updatedAt,mergeStateStatus \
+  --jq '.[] | "#\(.number) \(.headRefName) -> \(.baseRefName) [\(.mergeStateStatus)] \(.url)"'
+```
+
+Use the reviewed PR's `headRefName` as the starting branch. In the open PR
+list, follow PRs whose `baseRefName` equals the current branch in that walk:
+exactly one child means continue to that child's `headRefName`; zero children
+means the current branch in the walk is the stack top; multiple children means
+the stack is ambiguous, so stop and ask which branch or worktree should receive
+the fix. Use the detected stack top as `fix_base`.
+
 Default branch behavior:
 
 - do not amend, rebase, force-push, or otherwise update older reviewed PR
@@ -123,6 +147,39 @@ This is an intentional exception to the normal stacked-diffs maintenance rule
 that earlier diffs may be updated and downstream branches rebased. For review
 comment cleanup on an active stack, avoid rebase churn and put the correction in
 a follow-up PR above the current stack top.
+
+Create the follow-up branch and PR from the detected stack top with explicit
+base and head values; do not rely on `gh pr create` guessing from the current
+checkout:
+
+```bash
+fix_base=<top-of-stack-branch>
+fix_branch=<new-review-fix-branch>
+
+git fetch origin "$fix_base"
+git switch -c "$fix_branch" "origin/$fix_base"
+
+# Implement the accepted fixes, then audit as described in Reply Queue Lifecycle.
+git add <changed-files>
+git commit -m "<message>"
+git push -u origin "$fix_branch"
+
+gh pr create \
+  --base "$fix_base" \
+  --head "$fix_branch" \
+  --title "<title>" \
+  --body "<body>"
+
+fix_pr=<fix-pr-url-or-number>
+gh pr view "$fix_pr" \
+  --json number,url,baseRefName,headRefName,mergeStateStatus,changedFiles,additions,deletions
+gh pr diff "$fix_pr" --name-only
+gh pr diff "$fix_pr" --patch
+```
+
+After creation, verify `baseRefName` matches `fix_base`, `headRefName` matches
+`fix_branch`, and the PR diff contains only the intended review fixes before
+posting fixed replies.
 
 ## Review Loop
 
@@ -232,15 +289,31 @@ For stacked review fixes, queue replies after local audit, then post them only
 after the new top-of-stack PR exists. Keep every reply accurate about visibility:
 fixed replies must name the PR where the fix is visible.
 
-Before posting a reply, audit the relevant local diff/status:
+Before committing a follow-up fix, audit the worktree and staged changes:
 
 ```bash
 git status --short
 git diff -- <changed-files>
+git diff --cached -- <changed-files>
+# run focused checks
 ```
 
-Use this to verify the queued reply is true and to summarize changed files and
-checks in the final handoff. Do not `git add` unless preparing the follow-up PR.
+After committing and creating the follow-up PR, audit the reviewable range and
+PR-visible diff:
+
+```bash
+git show --stat --oneline HEAD
+git diff --stat "$fix_base"...HEAD
+git diff "$fix_base"...HEAD -- <changed-files>
+gh pr diff <fix-pr> --name-only
+gh pr diff <fix-pr> --patch
+```
+
+If the fix PR does not exist yet, skip the `gh pr diff` commands and keep fixed
+drafts queued without a URL. Post fixed replies only after the fix is visible in
+the follow-up PR and a scoped dry run succeeds. Use the audit output to verify
+the queued reply is true and to summarize changed files and checks in the final
+handoff. Do not `git add` unless preparing the follow-up PR.
 
 Create fixed drafts with:
 
@@ -268,21 +341,28 @@ After creating the new top-of-stack PR, attach its URL and post:
 
 ```bash
 python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
+  --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr> \
+  --dry-run
+
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
   --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr>
 ```
 
 Useful queue commands:
 
-- `list [--status pending|posting|failed|move_pending|move_failed|posted]`
+- `list [--status pending|posting|failed|move_pending|move_failed|posted] [--source-pr <number>] [--bundle <path>] [--draft-id <id>] [--json]`
 - `show <draft-id>`
+- `preview <draft-id> [--fix-pr-url <url>]`
 - `set-fix-pr <draft-id> <fix-pr-url>`
-- `set-fix-pr --all-pending-fixed <fix-pr-url>`
+- `set-fix-pr --all-pending-fixed <fix-pr-url> --source-pr <number>`
 - `post <draft-id> [--dry-run]`
-- `post-pending [--fix-pr-url <fix-pr-url>] [--dry-run]`
+- `post-pending [--source-pr <number>|--bundle <path>|--draft-id <id>] [--fix-pr-url <fix-pr-url>] [--dry-run]`
 - `recover-posting <draft-id> --posted-reply-url <url> [--dry-run]`
 - `recover-posting <draft-id> --no-reply-posted [--dry-run]`
 
-Queue records live under `GitHub Reviews/reply-queue/`, one JSON file per
+Queue records live under `.github-review-workflow/reply-queue/`, one JSON file per
 draft. They use stable GitHub identity fields; file paths are only locators.
 The queue refuses duplicate active drafts for the same thread and disposition.
 

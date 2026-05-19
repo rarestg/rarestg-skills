@@ -25,6 +25,12 @@ from github_review_utils import (
     resolved_thread_from_response,
 )
 
+DIRECT_SCRIPT_WARNING = (
+    "For stacked PR review-comment cleanup, prefer review_reply_queue.py. "
+    "This direct script is for single-item escape hatches and non-stacked "
+    "local-first work."
+)
+
 
 def load_reply_text(args: argparse.Namespace) -> str | None:
     if args.reply and args.reply_file:
@@ -52,7 +58,8 @@ def print_metadata(metadata: dict[str, str], *, owner: str, repo: str, number: i
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Post a GitHub reply and/or resolve a thread from an exported review item file."
+        description="Post a GitHub reply and/or resolve a thread from an exported review item file.",
+        epilog=DIRECT_SCRIPT_WARNING,
     )
     parser.add_argument("review_item", help="Path to an exported review item markdown file")
     parser.add_argument("--reply", help="Reply body to post")

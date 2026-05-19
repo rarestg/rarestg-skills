@@ -41,13 +41,13 @@ Useful export flags:
 Read the full bundle before editing:
 
 - `$SKILL_DIR/references/SOP.md`
-- `GitHub Reviews/pr-<number>-<slug>/README.md`
-- `GitHub Reviews/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
-- all files in `GitHub Reviews/pr-<number>-<slug>/todo/`
-- all files in `GitHub Reviews/pr-<number>-<slug>/outside-diff/` if it exists;
+- `.github-review-workflow/pr-<number>-<slug>/README.md`
+- `.github-review-workflow/pr-<number>-<slug>/context/01-coderabbit-walkthrough.md` if it exists
+- all files in `.github-review-workflow/pr-<number>-<slug>/todo/`
+- all files in `.github-review-workflow/pr-<number>-<slug>/outside-diff/` if it exists;
   triage them as local-only review-summary items because GitHub could not post
   them inline
-- all files in `GitHub Reviews/pr-<number>-<slug>/nitpicks/` if it exists;
+- all files in `.github-review-workflow/pr-<number>-<slug>/nitpicks/` if it exists;
   triage them as lower-priority local-only items unless the user asked to
   handle them now
 
@@ -88,6 +88,12 @@ replies:
 
 ```bash
 python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
+  --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr> \
+  --dry-run
+
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
   --fix-pr-url https://github.com/<owner>/<repo>/pull/<fix-pr>
 ```
 
@@ -96,7 +102,11 @@ Declined comments can use the same queue:
 ```bash
 python3 "$SKILL_DIR/scripts/review_reply_queue.py" add-declined <review-item-file> \
   --reason '<reason>'
-python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number> \
+  --dry-run
+python3 "$SKILL_DIR/scripts/review_reply_queue.py" post-pending \
+  --source-pr <reviewed-pr-number>
 ```
 
 Use `post_github_review_followup.py` only as a direct single-item escape hatch.
