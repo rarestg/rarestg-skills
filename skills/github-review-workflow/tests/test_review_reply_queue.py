@@ -182,6 +182,28 @@ class ReviewReplyQueueTests(unittest.TestCase):
         with self.assertRaises(queue.QueueError):
             queue.post_draft(out_root=self.out_root, draft=draft, dry_run=True)
 
+    def test_add_fixed_rejects_wrong_repo_fix_pr_url_before_saving(self) -> None:
+        with self.assertRaisesRegex(queue.QueueError, "does not match"):
+            queue.add_fixed(
+                out_root=self.out_root,
+                item_path=self.item,
+                summary="Use the shared helper.",
+                fix_pr_url="https://github.com/other/repo/pull/6",
+            )
+
+        self.assertFalse((self.out_root / "reply-queue").exists())
+
+    def test_add_fixed_rejects_invalid_fix_pr_url_before_saving(self) -> None:
+        with self.assertRaisesRegex(queue.QueueError, "Expected a GitHub pull request URL"):
+            queue.add_fixed(
+                out_root=self.out_root,
+                item_path=self.item,
+                summary="Use the shared helper.",
+                fix_pr_url="not-a-pr-url",
+            )
+
+        self.assertFalse((self.out_root / "reply-queue").exists())
+
     def test_set_fix_pr_renders_fixed_reply_body(self) -> None:
         draft = queue.add_fixed(
             out_root=self.out_root,
@@ -202,6 +224,22 @@ class ReviewReplyQueueTests(unittest.TestCase):
             updated["reply_body"],
         )
 
+    def test_set_fix_pr_rejects_wrong_repo_url(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+        )
+
+        with self.assertRaisesRegex(queue.QueueError, "does not match"):
+            self.run_queue_command(
+                "set-fix-pr",
+                draft["id"],
+                "https://github.com/other/repo/pull/6",
+            )
+
+        self.assertIsNone(self.load_draft_json(draft["id"])["fix_pr_url"])
+
     def test_dry_run_does_not_post_or_move(self) -> None:
         draft = queue.add_fixed(
             out_root=self.out_root,
@@ -221,6 +259,81 @@ class ReviewReplyQueueTests(unittest.TestCase):
         self.assertFalse((self.done_dir / self.item.name).exists())
         saved = self.load_draft_json(draft["id"])
         self.assertEqual("pending", saved["status"])
+
+    def test_dry_run_post_rejects_stored_wrong_repo_fix_pr_url(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+            fix_pr_url="https://github.com/example/repo/pull/6",
+        )
+        draft["fix_pr_url"] = "https://github.com/other/repo/pull/6"
+        draft["reply_body"] = (
+            "Addressed in https://github.com/other/repo/pull/6: Use the shared helper."
+        )
+        queue.save_draft(self.out_root, draft)
+
+        with patch.object(queue, "post_review_reply") as post_reply:
+            with self.assertRaisesRegex(queue.QueueError, "does not match"):
+                queue.post_draft(
+                    out_root=self.out_root,
+                    draft=queue.load_draft(self.out_root, draft["id"]),
+                    dry_run=True,
+                )
+
+        post_reply.assert_not_called()
+        self.assertTrue(self.item.exists())
+        self.assertEqual("pending", self.load_draft_json(draft["id"])["status"])
+
+    def test_dry_run_post_rerenders_stale_fixed_reply_body(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+            fix_pr_url="https://github.com/example/repo/pull/6",
+        )
+        draft["reply_body"] = (
+            "Addressed in https://github.com/other/repo/pull/6: Use the shared helper."
+        )
+        queue.save_draft(self.out_root, draft)
+
+        posted = queue.post_draft(
+            out_root=self.out_root,
+            draft=queue.load_draft(self.out_root, draft["id"]),
+            dry_run=True,
+        )
+
+        self.assertIn(
+            "Addressed in https://github.com/example/repo/pull/6: Use the shared helper.",
+            posted["_reply_body_preview"],
+        )
+        self.assertNotIn("other/repo", posted["_reply_body_preview"])
+        self.assertTrue(self.item.exists())
+        self.assertEqual("pending", self.load_draft_json(draft["id"])["status"])
+
+    def test_move_pending_rejects_stored_wrong_repo_fix_pr_url(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+            fix_pr_url="https://github.com/example/repo/pull/6",
+        )
+        draft["status"] = "move_pending"
+        draft["posted_reply_url"] = "https://github.com/example/repo/pull/2#reply"
+        draft["fix_pr_url"] = "https://github.com/other/repo/pull/6"
+        queue.save_draft(self.out_root, draft)
+
+        with patch.object(queue, "post_review_reply") as post_reply:
+            with self.assertRaisesRegex(queue.QueueError, "does not match"):
+                queue.post_draft(
+                    out_root=self.out_root,
+                    draft=queue.load_draft(self.out_root, draft["id"]),
+                    dry_run=True,
+                )
+
+        post_reply.assert_not_called()
+        self.assertTrue(self.item.exists())
+        self.assertFalse((self.done_dir / self.item.name).exists())
 
     def test_successful_post_records_url_and_moves_item(self) -> None:
         draft = queue.add_fixed(
@@ -615,6 +728,21 @@ class ReviewReplyQueueTests(unittest.TestCase):
             preview,
         )
         self.assertIn("This avoids duplicate parsing.", preview)
+
+    def test_preview_rejects_wrong_repo_fix_pr_url(self) -> None:
+        draft = queue.add_fixed(
+            out_root=self.out_root,
+            item_path=self.item,
+            summary="Use the shared helper.",
+        )
+
+        with self.assertRaisesRegex(queue.QueueError, "does not match"):
+            self.run_queue_command(
+                "preview",
+                draft["id"],
+                "--fix-pr-url",
+                "https://github.com/other/repo/pull/6",
+            )
 
 
 if __name__ == "__main__":

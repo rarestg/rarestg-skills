@@ -284,24 +284,63 @@ def fixed_candidates_needing_fix_pr_url(drafts: list[dict[str, Any]]) -> list[di
     return candidates
 
 
+def normalized_fix_pr_url(fix_pr_url: object) -> str | None:
+    if fix_pr_url is None:
+        return None
+    text = str(fix_pr_url).strip()
+    if not metadata_value_present(text):
+        return None
+    return text
+
+
+def validate_fix_pr_url_for_draft(draft: dict[str, Any], fix_pr_url: object) -> str:
+    fix_pr_url_text = normalized_fix_pr_url(fix_pr_url)
+    if fix_pr_url_text is None:
+        raise QueueError("Fix PR URL must not be empty.")
+
+    try:
+        fix_owner, fix_repo, _fix_number = parse_pr_url(fix_pr_url_text)
+    except ValueError as error:
+        raise QueueError(str(error)) from error
+
+    if draft.get("owner") != fix_owner or draft.get("repo") != fix_repo:
+        raise QueueError(
+            "Fix PR URL repository does not match draft source "
+            f"{draft_source_text(draft)}: {fix_pr_url_text}"
+        )
+    return fix_pr_url_text
+
+
+def stored_fix_pr_url_for_draft(
+    draft: dict[str, Any], *, require_url: bool
+) -> str | None:
+    if draft.get("disposition") != "fixed":
+        return None
+
+    fix_pr_url = normalized_fix_pr_url(draft.get("fix_pr_url"))
+    if fix_pr_url is None:
+        if require_url:
+            raise QueueError(
+                f"Fixed draft {draft['id']} requires a fix PR URL before posting."
+            )
+        return None
+
+    return validate_fix_pr_url_for_draft(draft, fix_pr_url)
+
+
 def validate_fix_pr_url_for_candidates(
     *,
     fix_pr_url: str,
     candidates: list[dict[str, Any]],
 ) -> None:
-    fix_owner, fix_repo, _fix_number = parse_pr_url(fix_pr_url)
-    mismatched_sources = sorted(
-        {
-            draft_source_text(draft)
-            for draft in candidates
-            if draft.get("owner") != fix_owner or draft.get("repo") != fix_repo
-        }
-    )
-    if mismatched_sources:
-        raise QueueError(
-            "Fix PR URL repository does not match candidate draft source(s): "
-            + ", ".join(mismatched_sources)
-        )
+    errors = []
+    for draft in candidates:
+        try:
+            validate_fix_pr_url_for_draft(draft, fix_pr_url)
+        except QueueError as error:
+            errors.append(str(error))
+    if errors:
+        raise QueueError("\n".join(sorted(set(errors))))
 
 
 def validate_no_conflicting_fix_pr_urls(
@@ -309,12 +348,13 @@ def validate_no_conflicting_fix_pr_urls(
     fix_pr_url: str,
     candidates: list[dict[str, Any]],
 ) -> None:
+    fix_pr_url_text = normalized_fix_pr_url(fix_pr_url) or fix_pr_url
     conflicts = [
         draft
         for draft in candidates
         if draft.get("disposition") == "fixed"
         and metadata_value_present(draft.get("fix_pr_url"))
-        and str(draft.get("fix_pr_url")) != fix_pr_url
+        and str(draft.get("fix_pr_url")).strip() != fix_pr_url_text
     ]
     if conflicts:
         raise QueueError(
@@ -370,6 +410,19 @@ def save_draft(out_root: Path, draft: dict[str, Any]) -> None:
     payload = {key: value for key, value in draft.items() if not key.startswith("_")}
     payload["updated_at"] = utc_now()
     atomic_write_json(queue_path(out_root, payload["id"]), payload)
+
+
+def draft_with_fix_pr_url(draft: dict[str, Any], fix_pr_url: object) -> dict[str, Any]:
+    fix_pr_url_text = validate_fix_pr_url_for_draft(draft, fix_pr_url)
+    updated = dict(draft)
+    updated["fix_pr_url"] = fix_pr_url_text
+    updated["reply_body"] = render_fixed_reply(
+        fix_pr_url=fix_pr_url_text,
+        summary=updated.get("summary") or "",
+        rationale=updated.get("rationale"),
+    )
+    updated["last_error"] = None
+    return updated
 
 
 def build_base_draft(
@@ -440,19 +493,15 @@ def build_base_draft(
         "rationale": rationale,
         "reason": reason,
         "reply_body": None,
-        "fix_pr_url": fix_pr_url,
+        "fix_pr_url": None,
         "posted_reply_url": None,
         "created_at": now,
         "updated_at": now,
         "posted_at": None,
         "last_error": None,
     }
-    if disposition == "fixed" and fix_pr_url:
-        draft["reply_body"] = render_fixed_reply(
-            fix_pr_url=fix_pr_url,
-            summary=summary or "",
-            rationale=rationale,
-        )
+    if disposition == "fixed" and fix_pr_url is not None:
+        draft = draft_with_fix_pr_url(draft, fix_pr_url)
     elif disposition == "declined":
         draft["reply_body"] = render_declined_reply(reason=reason or "")
     return draft
@@ -498,17 +547,12 @@ def add_declined(*, out_root: Path, item_path: Path, reason: str) -> dict[str, A
 def ensure_fixed_reply_ready(draft: dict[str, Any]) -> None:
     if draft.get("disposition") != "fixed":
         return
-    fix_pr_url = draft.get("fix_pr_url")
-    if not metadata_value_present(fix_pr_url):
-        raise QueueError(
-            f"Fixed draft {draft['id']} requires a fix PR URL before posting."
-        )
-    if not metadata_value_present(draft.get("reply_body")):
-        draft["reply_body"] = render_fixed_reply(
-            fix_pr_url=fix_pr_url,
-            summary=draft.get("summary") or "",
-            rationale=draft.get("rationale"),
-        )
+    fix_pr_url = stored_fix_pr_url_for_draft(draft, require_url=True)
+    draft["reply_body"] = render_fixed_reply(
+        fix_pr_url=fix_pr_url,
+        summary=draft.get("summary") or "",
+        rationale=draft.get("rationale"),
+    )
 
 
 def set_fix_pr_url(
@@ -520,14 +564,7 @@ def set_fix_pr_url(
 ) -> dict[str, Any]:
     if draft.get("disposition") != "fixed":
         raise QueueError(f"Draft is not a fixed draft: {draft['id']}")
-    updated = dict(draft)
-    updated["fix_pr_url"] = fix_pr_url
-    updated["reply_body"] = render_fixed_reply(
-        fix_pr_url=fix_pr_url,
-        summary=updated.get("summary") or "",
-        rationale=updated.get("rationale"),
-    )
-    updated["last_error"] = None
+    updated = draft_with_fix_pr_url(draft, fix_pr_url)
     if not dry_run:
         save_draft(out_root, updated)
     return updated
@@ -621,6 +658,7 @@ def draft_ready_for_post_preflight(
     if status == "posted":
         return
     if status in {"move_pending", "move_failed"} and draft.get("posted_reply_url"):
+        stored_fix_pr_url_for_draft(draft, require_url=False)
         move_review_item_after_post(out_root=out_root, draft=draft, dry_run=True)
         return
     if status == "posting":
@@ -667,6 +705,7 @@ def post_draft(
         return draft
 
     if status in {"move_pending", "move_failed"} and draft.get("posted_reply_url"):
+        stored_fix_pr_url_for_draft(draft, require_url=False)
         target_path = move_review_item_after_post(
             out_root=out_root,
             draft=draft,
@@ -777,6 +816,7 @@ def recover_posting_draft(
         recovered["status"] = "move_pending"
         recovered["posted_reply_url"] = str(posted_reply_url)
         recovered["posted_at"] = recovered.get("posted_at") or utc_now()
+        stored_fix_pr_url_for_draft(recovered, require_url=False)
         if not dry_run:
             save_draft(out_root, recovered)
         return post_draft(out_root=out_root, draft=recovered, dry_run=dry_run)
@@ -907,6 +947,32 @@ def print_draft_result(draft: dict[str, Any], *, dry_run: bool = False) -> None:
 
 
 def print_preview(draft: dict[str, Any], *, fix_pr_url: str | None = None) -> None:
+    reply_body = None
+    blocked_fixed_reply = False
+
+    if fix_pr_url:
+        if draft.get("disposition") != "fixed":
+            raise QueueError("--fix-pr-url preview is only valid for fixed drafts.")
+        effective_fix_pr_url = validate_fix_pr_url_for_draft(draft, fix_pr_url)
+    elif draft.get("disposition") == "fixed":
+        effective_fix_pr_url = stored_fix_pr_url_for_draft(draft, require_url=False)
+    else:
+        effective_fix_pr_url = None
+
+    if draft.get("disposition") == "fixed":
+        if effective_fix_pr_url is None:
+            blocked_fixed_reply = True
+        else:
+            reply_body = render_fixed_reply(
+                fix_pr_url=effective_fix_pr_url,
+                summary=draft.get("summary") or "",
+                rationale=draft.get("rationale"),
+            )
+    else:
+        reply_body = draft.get("reply_body")
+        if not metadata_value_present(reply_body) and draft.get("disposition") == "declined":
+            reply_body = render_declined_reply(reason=draft.get("reason") or "")
+
     print(f"Draft: {draft.get('id')}")
     print(f"Status: {draft.get('status')}")
     print(f"Disposition: {draft.get('disposition')}")
@@ -914,31 +980,15 @@ def print_preview(draft: dict[str, Any], *, fix_pr_url: str | None = None) -> No
     if metadata_value_present(draft.get("source_item_path")):
         print(f"Item path: {draft.get('source_item_path')}")
 
-    if fix_pr_url:
-        if draft.get("disposition") != "fixed":
-            raise QueueError("--fix-pr-url preview is only valid for fixed drafts.")
-        validate_fix_pr_url_for_candidates(fix_pr_url=fix_pr_url, candidates=[draft])
-
-    if draft.get("disposition") == "fixed":
-        effective_fix_pr_url = fix_pr_url or draft.get("fix_pr_url")
-        if not metadata_value_present(effective_fix_pr_url):
-            print(
-                "Reply body: intentionally blocked until a fix PR URL is attached."
-            )
-            print(
-                "Use preview --fix-pr-url <url> to render the final reply without "
-                "mutating the queue."
-            )
-            return
-        reply_body = render_fixed_reply(
-            fix_pr_url=str(effective_fix_pr_url),
-            summary=draft.get("summary") or "",
-            rationale=draft.get("rationale"),
+    if blocked_fixed_reply:
+        print(
+            "Reply body: intentionally blocked until a fix PR URL is attached."
         )
-    else:
-        reply_body = draft.get("reply_body")
-        if not metadata_value_present(reply_body) and draft.get("disposition") == "declined":
-            reply_body = render_declined_reply(reason=draft.get("reason") or "")
+        print(
+            "Use preview --fix-pr-url <url> to render the final reply without "
+            "mutating the queue."
+        )
+        return
 
     if not metadata_value_present(reply_body):
         print("Reply body: unavailable.")
