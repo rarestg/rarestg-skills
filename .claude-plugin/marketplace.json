@@ -27,7 +27,8 @@
         "./skills/stacked-diffs",
         "./skills/agents-md",
         "./skills/execplan",
-        "./skills/github-review-workflow"
+        "./skills/github-review-workflow",
+        "./skills/export-traces-transcript"
       ]
     }
   ]
