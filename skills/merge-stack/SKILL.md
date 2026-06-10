@@ -7,7 +7,7 @@ description: >-
   stacked PRs".
 disable-model-invocation: true
 allowed-tools: Bash, Read, Glob, Grep
-argument-hint: "[branch-prefix]"
+argument-hint: '[branch-prefix]'
 ---
 
 # Merge Stacked PRs
@@ -36,25 +36,26 @@ Starting with the PR that targets `main`:
 1. Merge it: `gh pr merge <number> --merge`
 2. For each next PR in the chain:
    a. Inspect its current base. If GitHub already re-targeted it to `main`,
-      continue. Otherwise, re-target it to `main` with the REST API:
+   continue. Otherwise, re-target it to `main` with the REST API:
 
-      ```bash
-      repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
-      gh api -X PATCH "repos/${repo}/pulls/<number>" -f base=main \
-        --jq '"#\(.number) \(.head.ref) → \(.base.ref)"'
-      ```
+   ```bash
+   repo=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
+   gh api -X PATCH "repos/${repo}/pulls/<number>" -f base=main \
+     --jq '"#\(.number) \(.head.ref) → \(.base.ref)"'
+   ```
 
-      If `GH_HOST` is set to a host that is not the PR host, unset or correct
-      it for both commands. For a GitHub.com PR from an environment with a stale
-      enterprise/internal `GH_HOST`, use:
+   If `GH_HOST` is set to a host that is not the PR host, unset or correct
+   it for both commands. For a GitHub.com PR from an environment with a stale
+   enterprise/internal `GH_HOST`, use:
 
-      ```bash
-      repo=$(env -u GH_HOST gh repo view --json nameWithOwner --jq .nameWithOwner)
-      env -u GH_HOST gh api -X PATCH "repos/${repo}/pulls/<number>" -f base=main \
-        --jq '"#\(.number) \(.head.ref) → \(.base.ref)"'
-      ```
+   ```bash
+   repo=$(env -u GH_HOST gh repo view --json nameWithOwner --jq .nameWithOwner)
+   env -u GH_HOST gh api -X PATCH "repos/${repo}/pulls/<number>" -f base=main \
+     --jq '"#\(.number) \(.head.ref) → \(.base.ref)"'
+   ```
 
    b. Merge it: `gh pr merge <number> --merge`
+
 3. Repeat until all PRs are merged.
 
 Use `--merge`, not `--squash` or `--rebase`, to preserve commit history unless

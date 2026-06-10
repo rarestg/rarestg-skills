@@ -171,7 +171,7 @@ Default loop:
 9. run a bounded maintainability pass, accepting only simplifications that
    clearly reduce complexity or risk
 10. once the ticket is clean enough, the sub-PM runs final validation and
-   closes it out
+    closes it out
 
 By default, use one implementation worker and one reviewer per ticket.
 When waiting on delegated agents, use the maximum wait timeout the tool

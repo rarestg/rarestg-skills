@@ -19,6 +19,7 @@ Browse and scrape the web via Cloudflare's Browser Rendering REST API. Every cal
 ## Prerequisites
 
 Requires two env vars (confirm they're set before making calls):
+
 - `CF_ACCOUNT_ID` — Cloudflare account ID
 - `CF_API_TOKEN` — API token with **Browser Rendering - Edit** permission
 
@@ -36,15 +37,15 @@ cfbr.sh screenshot '<json_body>' output.png
 
 ## Choosing an endpoint
 
-| Goal | Endpoint | When to use |
-|---|---|---|
-| Read page content for analysis | `markdown` | Default choice — clean, token-efficient |
-| Extract specific elements | `scrape` | Know the CSS selectors for what you need |
-| Extract structured data with AI | `json` | Need typed objects, don't know exact selectors |
-| Get full rendered DOM | `content` | Need raw HTML for parsing or debugging |
-| Discover pages / crawl | `links` | Building a sitemap or finding subpages |
-| Visual inspection | `screenshot` | Need to see the page layout or debug visually |
-| DOM + visual in one shot | `snapshot` | Need both HTML and a screenshot |
+| Goal                            | Endpoint     | When to use                                    |
+| ------------------------------- | ------------ | ---------------------------------------------- |
+| Read page content for analysis  | `markdown`   | Default choice — clean, token-efficient        |
+| Extract specific elements       | `scrape`     | Know the CSS selectors for what you need       |
+| Extract structured data with AI | `json`       | Need typed objects, don't know exact selectors |
+| Get full rendered DOM           | `content`    | Need raw HTML for parsing or debugging         |
+| Discover pages / crawl          | `links`      | Building a sitemap or finding subpages         |
+| Visual inspection               | `screenshot` | Need to see the page layout or debug visually  |
+| DOM + visual in one shot        | `snapshot`   | Need both HTML and a screenshot                |
 
 For full endpoint details and parameters, see [api.md](references/api.md).
 
@@ -63,7 +64,7 @@ cfbr.sh markdown '{"url":"https://target-site.com/listings", "gotoOptions":{"wai
 If the page is an SPA or loads content dynamically, `networkidle0` ensures JS finishes executing. If you know a specific element that signals content is ready, use `waitForSelector` instead — it's faster:
 
 ```json
-{"url":"...", "waitForSelector": ".listing-card"}
+{ "url": "...", "waitForSelector": ".listing-card" }
 ```
 
 ### 2. Discover structure — find the selectors
@@ -148,13 +149,13 @@ Infinite-scroll pages are a limitation — the API is stateless (one request = o
 **Heavy pages** — Strip unnecessary resources:
 
 ```json
-{"rejectResourceTypes": ["image", "stylesheet", "font", "media"]}
+{ "rejectResourceTypes": ["image", "stylesheet", "font", "media"] }
 ```
 
 **Auth-gated pages** — Pass session cookies:
 
 ```json
-{"cookies": [{"name": "session", "value": "abc123", "domain": "target-site.com", "path": "/"}]}
+{ "cookies": [{ "name": "session", "value": "abc123", "domain": "target-site.com", "path": "/" }] }
 ```
 
 **Bot detection** — Cloudflare Browser Rendering is always identified as a bot. The `userAgent` field changes what the site sees but will not bypass bot protection. If a site blocks the request, there is no workaround via this API.

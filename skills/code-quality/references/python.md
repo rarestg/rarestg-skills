@@ -112,14 +112,15 @@ uv run pre-commit install
 
 ### Configure pre-commit
 
-Create `.pre-commit-config.yaml` in the project root. Pin concrete versions, then
-keep them fresh with `pre-commit autoupdate` or Dependabot's `pre-commit`
+Create `.pre-commit-config.yaml` in the project root. Look up the current
+`ruff-pre-commit` revision before writing the file. Pin that concrete revision,
+then keep it fresh with `pre-commit autoupdate` or Dependabot's `pre-commit`
 ecosystem.
 
 ```yaml
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.16
+    rev: vX.Y.Z # replace with the current ruff-pre-commit release
     hooks:
       - id: ruff-check
         args: [--fix]
@@ -152,6 +153,8 @@ uv run pre-commit run --all-files
 
 Add a `Makefile` or equivalent project-runner tasks to expose the standard
 command contract. Makefile recipe lines must use tabs, not spaces.
+
+The indented recipe lines below must begin with literal tab characters.
 
 ```makefile
 .PHONY: format lint typecheck test check check\:fix

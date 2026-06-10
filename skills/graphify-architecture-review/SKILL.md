@@ -7,7 +7,7 @@ description: >-
   asked to analyze repo architecture, god nodes, surprising edges, topology,
   module boundaries, or graph-derived cleanup/refactor opportunities.
 allowed-tools: Bash, Read, Glob, Grep, Write, Edit, Agent
-argument-hint: "<repo path or scoped subtree>"
+argument-hint: '<repo path or scoped subtree>'
 ---
 
 # Graphify-Led Architecture Review

@@ -37,16 +37,24 @@ follow-up changes.
   "scripts": {
     "format": "prettier --write \"README.md\" \"skills/**/*.md\"",
     "lint:markdown": "markdownlint-cli2 \"README.md\" \"skills/**/*.md\"",
-    "check": "npm run lint:markdown && npm test"
-  },
-  "devDependencies": {
-    "markdownlint-cli2": "0.22.1",
-    "prettier": "3.8.4"
+    "check": "npm run lint:markdown"
   }
 }
 ```
 
-Use the detected package manager and pin current versions at setup time.
+Use the detected package manager. Install current `markdownlint-cli2` and
+`prettier` dev dependencies at setup time and let the project lockfile pin them.
+
+After adding a real validation script, include it explicitly:
+
+```json
+{
+  "scripts": {
+    "validate": "node scripts/validate-skills.mjs",
+    "check": "npm run lint:markdown && npm run validate"
+  }
+}
+```
 
 ## Skill repo invariants
 

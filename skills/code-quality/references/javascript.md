@@ -4,6 +4,17 @@ Use the project's existing package manager. The examples below use `npm`;
 substitute `pnpm`, `yarn`, or `bun` when the repo already uses that tool. Do not
 create a second lockfile.
 
+Examples use `npm`. Substitute consistently:
+
+- Install dev dependencies with `npm install --save-dev X`, `pnpm add -D X`,
+  `yarn add -D X`, or `bun add -d X`.
+- Scaffold config with `npm init @tool/config`, `pnpm create @tool/config`,
+  `yarn create @tool/config`, or `bun create @tool/config`.
+- Run scripts with `npm run check`, `pnpm run check`, `yarn check`, or
+  `bun run check`.
+- Execute package binaries with `npx tool`, `pnpm exec tool`, `yarn exec tool`,
+  or `bunx tool`.
+
 ## Biome
 
 Biome handles formatting, linting, and import sorting for JS, TS, JSX, TSX, CSS,
@@ -155,7 +166,8 @@ the VCS diff.
 ## Standard commands
 
 Add scripts to `package.json` to expose the standard command contract. Omit
-`typecheck` or `unused` when they do not fit the repo:
+`test`, `typecheck`, or `unused` when they do not fit the repo. If tests already
+exist, include them in `check`:
 
 ```json
 {
@@ -164,13 +176,15 @@ Add scripts to `package.json` to expose the standard command contract. Omit
     "lint": "biome ci .",
     "typecheck": "tsc --noEmit",
     "unused": "knip",
-    "check": "biome ci . && tsc --noEmit && knip",
-    "check:fix": "biome check . --write && npm run check"
+    "test": "<project test command>",
+    "check": "npm run lint && npm run typecheck && npm run unused && npm test",
+    "check:fix": "npm run format && npm run check"
   }
 }
 ```
 
-Use the detected package manager's script runner in examples and CI.
+Use the detected package manager's script runner in package scripts, examples,
+and CI.
 
 ## Lefthook
 
@@ -192,10 +206,14 @@ pre-commit:
   parallel: true
   commands:
     biome:
-      glob: "*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,jsonc,css,html,graphql,gql}"
-      run: npx biome check --write --no-errors-on-unmatched --files-ignore-unknown=true {staged_files}
+      glob: '*.{js,jsx,ts,tsx,mjs,cjs,mts,cts,json,jsonc,css,html,graphql,gql}'
+      run: >
+        npx biome check --write --no-errors-on-unmatched
+        --files-ignore-unknown=true {staged_files}
       stage_fixed: true
 ```
+
+Use the detected runner equivalent if the repo does not use npm.
 
 Use pre-push for slower full-project checks when desired:
 
@@ -230,6 +248,7 @@ npx knip
 npm test
 ```
 
+Run only commands that exist; include the project test command when tests exist.
 Use the current `actions/checkout` and `actions/setup-node` major versions when
 adding GitHub Actions, and enable package-manager cache only for the detected
 package manager.

@@ -26,12 +26,12 @@ flags, or broader organization process here.
 
 Determine the project type from existing files or the scaffolding context:
 
-| Signal | Ecosystem |
-| ------ | --------- |
-| `pyproject.toml`, `setup.py`, `requirements.txt`, `.py` files | Python |
-| `package.json`, `tsconfig.json`, `.ts`/`.js`/`.tsx` files | JavaScript/TypeScript |
-| `SKILL.md`, many `.md` files, marketplace/plugin metadata | Documentation or skill repo |
-| Multiple signals | Monorepo or mixed repo - configure each ecosystem separately |
+| Signal                                                        | Ecosystem                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------ |
+| `pyproject.toml`, `setup.py`, `requirements.txt`, `.py` files | Python                                                       |
+| `package.json`, `tsconfig.json`, `.ts`/`.js`/`.tsx` files     | JavaScript/TypeScript                                        |
+| `SKILL.md`, many `.md` files, marketplace/plugin metadata     | Documentation or skill repo                                  |
+| Multiple signals                                              | Monorepo or mixed repo - configure each ecosystem separately |
 
 Also check for existing quality tooling configs (`.eslintrc`, `.prettierrc`,
 `biome.json`, `[tool.black]` or `[tool.ruff]` in `pyproject.toml`,
@@ -67,14 +67,14 @@ After detecting the ecosystem, follow the appropriate guide:
 Expose a small, predictable command surface through `package.json` scripts,
 `Makefile`, or the project's existing task runner:
 
-| Command | What it does |
-| ------- | ------------ |
-| `format` | Auto-format and sort imports |
-| `lint` | Lint and format-check without writing |
-| `typecheck` | Run type checker when the ecosystem supports it |
-| `test` | Run deterministic tests |
-| `check` | All non-writing checks: lint, typecheck, tests, and unused-code detection when relevant |
-| `check:fix` | Run autofixers, then run `check` |
+| Command     | What it does                                                                            |
+| ----------- | --------------------------------------------------------------------------------------- |
+| `format`    | Auto-format and sort imports                                                            |
+| `lint`      | Lint and format-check without writing                                                   |
+| `typecheck` | Run type checker when the ecosystem supports it                                         |
+| `test`      | Run deterministic tests                                                                 |
+| `check`     | All non-writing checks: lint, typecheck, tests, and unused-code detection when relevant |
+| `check:fix` | Run autofixers, then run `check`                                                        |
 
 Do not invent fake commands for docs-only or tiny repos. If an ecosystem has no
 meaningful type checker or unused-code detector, omit that command or make
@@ -97,9 +97,11 @@ If CI already exists, ensure it runs the standard non-writing check command:
 - Python: `make check` or the project runner's equivalent
 - Monorepo: each package/ecosystem check from the right workspace root
 
-If CI does not exist and the user asked for CI or the repo has tests, add a
-minimal workflow that runs lint, typecheck, tests, and build only when those
-commands exist. For GitHub Actions, workflows live under `.github/workflows`;
+If CI does not exist and either the user asked for CI or the task is broad
+project scaffolding/setup, add a minimal workflow that runs lint, typecheck,
+tests, and build only when those commands exist. If the user asked only for
+local linting/formatting, mention CI as a follow-up instead of adding it
+automatically. For GitHub Actions, workflows live under `.github/workflows`;
 check the current official action versions before writing a new workflow.
 
 When CI fails, read the exact failing command and output, reproduce that command
@@ -113,7 +115,8 @@ CI/CD-specific workflow.
 
 1. Install and configure the tools for the detected ecosystem.
 2. Add hook infrastructure if appropriate (`lefthook` or `pre-commit`).
-3. Add or update CI so central checks run the non-writing command.
+3. Add or update CI when it is in scope so central checks run the non-writing
+   command.
 4. Run the full suite once to establish a clean baseline.
 5. Fix initial issues so the first "real" commit starts clean.
 6. Commit configuration and mechanical baseline changes separately when
@@ -150,8 +153,10 @@ hundreds of unrelated errors.
 - **If tooling binaries aren't available, scaffold configs anyway.** Write the
   configuration files and report the exact install/check commands the user
   still needs to run.
-- **Use current docs for pinned external versions.** Re-check GitHub Actions,
-  pre-commit hook revisions, and package versions before adding them.
+- **Don't copy package versions from this skill blindly.** At setup time,
+  install the current appropriate version with the detected package manager and
+  let the project lockfile pin it. For pre-commit hooks, look up the current
+  hook revision before writing `.pre-commit-config.yaml`.
 
 ## Completion checklist
 
@@ -163,6 +168,6 @@ Before considering the setup done, verify:
 3. Standard commands work for the repo shape: `format`, `lint`, `test`,
    `typecheck` when relevant, `check`, and `check:fix`
 4. Hooks configured and executable when requested (`pre-commit run --all-files`
-   or `npx lefthook run pre-commit`)
-5. CI runs the non-writing check command
+   or the detected runner equivalent, for example `npx lefthook run pre-commit`)
+5. CI runs the non-writing check command when CI is in scope
 6. Baseline autofix applied and a clean check passes with no errors

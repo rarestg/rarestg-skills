@@ -7,7 +7,7 @@ description: >-
   execplan", "plan this out", "design before building", or needs a structured
   approach before starting complex work.
 allowed-tools: Bash, Read, Glob, Grep, Write, Edit
-argument-hint: "[task description or path to existing plan]"
+argument-hint: '[task description or path to existing plan]'
 ---
 
 # ExecPlan
@@ -59,6 +59,7 @@ is approved.
 ### 4. Execute from the plan
 
 Work through milestones sequentially. At every stopping point:
+
 - Update Progress with what was done and what remains
 - Record surprises and decisions in their sections
 - Commit the updated plan alongside code changes
