@@ -27,6 +27,7 @@ Personal collection of [Agent Skills](https://agentskills.io) and SOPs for AI co
 | [agents-md](skills/agents-md/) | Create and maintain a concise AGENTS.md that routes agents to the repo's real sources of truth |
 | [execplan](skills/execplan/) | Write a self-contained execution plan for complex, multi-step implementation work |
 | [github-review-workflow](skills/github-review-workflow/) | Export a PR's inline review threads, CodeRabbit outside-diff comments, and nitpicks into clean local queues for triage and follow-through |
+| [export-traces-transcript](skills/export-traces-transcript/) | Export a Traces/Codex thread ID into a durable Markdown transcript |
 
 ---
 
