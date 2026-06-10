@@ -9,9 +9,9 @@ description: >-
 
 # Skill Review
 
-Review a skill and propose improvements only if genuinely needed. Bias toward
-leaving things alone. A short, focused skill is better than a comprehensive one
-that wastes tokens.
+Review a skill for practical usefulness, portability, and clarity. Propose
+improvements only if genuinely needed. Bias toward leaving things alone. A
+short, focused skill is better than a comprehensive one that wastes tokens.
 
 ## Portable Baseline
 
@@ -58,7 +58,8 @@ rest of the review in this.
 
 **Body:**
 
-- Under 500 lines? If over, move detail to reference files.
+- Is `SKILL.md` short enough to stay useful when loaded into context? As a rough
+  ceiling, move detail to reference files before it approaches 500 lines.
 - Does every paragraph justify its token cost?
 - Are instructions concrete and actionable?
 - Does it capture inputs, repeatable steps, decisions, gotchas, and expected
@@ -104,6 +105,12 @@ Summarize:
 2. What is working well.
 3. Specific issues found, if any.
 4. Proposed changes with rationale for each.
+
+For issues, use severity labels:
+
+- Must fix: portability, correctness, safety, or broken-file issues
+- Should fix: clarity, trigger quality, or maintainability issues
+- Optional: small wording or organization improvements
 
 If no changes are needed, say "No changes recommended" and stop. Do not
 manufacture improvements.
