@@ -1,0 +1,21 @@
+{
+  "name": "rarestg",
+  "interface": {
+    "displayName": "RarestG Plugins"
+  },
+  "plugins": [
+    {
+      "name": "rarestg-skills",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/rarestg/rarestg-skills.git",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -4,6 +4,15 @@ Personal collection of [Agent Skills](https://agentskills.io) and SOPs for AI co
 
 ## Install
 
+### Codex
+
+```
+codex plugin marketplace add rarestg/rarestg-skills --ref main
+codex plugin add rarestg-skills --marketplace rarestg
+```
+
+### Claude / skills CLI
+
 ```
 /plugin marketplace add rarestg/rarestg-skills
 /plugin install rarestg-skills@rarestg-skills
