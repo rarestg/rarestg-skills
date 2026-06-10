@@ -10,7 +10,7 @@ description: >-
   AGENTS.md", "fix our agent instructions", "make this repo easier for
   Codex/Claude/agents", "rewrite this bloated AGENTS.md".
 allowed-tools: Bash, Read, Glob, Grep, Write, Edit
-argument-hint: "[create | update | shrink]"
+argument-hint: '[create | update | shrink]'
 ---
 
 # AGENTS.md

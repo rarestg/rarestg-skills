@@ -9,7 +9,7 @@ All endpoints accept POST with JSON body. Every request requires either `url` (w
 ### `/markdown` — Rendered page as clean markdown
 
 ```json
-{"url": "https://example.com"}
+{ "url": "https://example.com" }
 ```
 
 Returns `{"success": true, "result": "# Example Domain\n..."}`.
@@ -23,10 +23,7 @@ Requires `elements` array with `selector` strings.
 ```json
 {
   "url": "https://example.com",
-  "elements": [
-    {"selector": "h1"},
-    {"selector": "a"}
-  ]
+  "elements": [{ "selector": "h1" }, { "selector": "a" }]
 }
 ```
 
@@ -50,8 +47,8 @@ Pass `prompt` and/or `response_format` (JSON schema). Uses Workers AI by default
           "items": {
             "type": "object",
             "properties": {
-              "title": {"type": "string"},
-              "price": {"type": "string"}
+              "title": { "type": "string" },
+              "price": { "type": "string" }
             },
             "required": ["title"]
           }
@@ -75,7 +72,7 @@ Pass `prompt` and/or `response_format` (JSON schema). Uses Workers AI by default
 ### `/content` — Full rendered HTML
 
 ```json
-{"url": "https://example.com"}
+{ "url": "https://example.com" }
 ```
 
 Returns `{"success": true, "result": "<!DOCTYPE html>...", "meta": {"status": 200, "title": "..."}}`.
@@ -85,7 +82,7 @@ Use for JS-heavy / SPA sites where view-source is empty.
 ### `/links` — All hrefs on the page
 
 ```json
-{"url": "https://example.com"}
+{ "url": "https://example.com" }
 ```
 
 Returns `{"success": true, "result": ["https://..."]}`.
@@ -99,8 +96,8 @@ Returns raw bytes (use `--output`). Options via `screenshotOptions`:
 ```json
 {
   "url": "https://example.com",
-  "screenshotOptions": {"fullPage": true, "type": "jpeg", "quality": 80},
-  "viewport": {"width": 1280, "height": 720}
+  "screenshotOptions": { "fullPage": true, "type": "jpeg", "quality": 80 },
+  "viewport": { "width": 1280, "height": 720 }
 }
 ```
 
@@ -109,7 +106,7 @@ Returns raw bytes (use `--output`). Options via `screenshotOptions`:
 ### `/snapshot` — HTML + base64 screenshot in one call
 
 ```json
-{"url": "https://example.com"}
+{ "url": "https://example.com" }
 ```
 
 Returns `{"success": true, "result": {"content": "<!DOCTYPE html>...", "screenshot": "iVBOR..."}}`.
@@ -120,39 +117,39 @@ Decode: `base64 -d <<< "$screenshot" > snap.png`
 
 ### Page loading
 
-| Parameter | Description |
-|---|---|
-| `gotoOptions.waitUntil` | `load` (default), `domcontentloaded`, `networkidle0`, `networkidle2` |
-| `gotoOptions.timeout` | Max navigation time in ms |
-| `waitForSelector` | Return as soon as this CSS selector appears (faster than networkidle) |
+| Parameter               | Description                                                           |
+| ----------------------- | --------------------------------------------------------------------- |
+| `gotoOptions.waitUntil` | `load` (default), `domcontentloaded`, `networkidle0`, `networkidle2`  |
+| `gotoOptions.timeout`   | Max navigation time in ms                                             |
+| `waitForSelector`       | Return as soon as this CSS selector appears (faster than networkidle) |
 
 **waitUntil values:** `networkidle0` = zero connections for 500ms (best for SPAs). `networkidle2` = at most 2 connections for 500ms (good balance).
 
 ### Request filtering (speed optimization)
 
-| Parameter | Description |
-|---|---|
-| `rejectResourceTypes` | Block by type: `image`, `stylesheet`, `font`, `script`, `media` |
-| `rejectRequestPattern` | Block by regex |
-| `allowResourceTypes` | Whitelist types |
-| `allowRequestPattern` | Whitelist patterns |
+| Parameter              | Description                                                     |
+| ---------------------- | --------------------------------------------------------------- |
+| `rejectResourceTypes`  | Block by type: `image`, `stylesheet`, `font`, `script`, `media` |
+| `rejectRequestPattern` | Block by regex                                                  |
+| `allowResourceTypes`   | Whitelist types                                                 |
+| `allowRequestPattern`  | Whitelist patterns                                              |
 
 ### Auth & headers
 
-| Parameter | Description |
-|---|---|
-| `cookies` | `[{name, value, domain, path}]` |
-| `authenticate` | HTTP basic auth credentials |
-| `setExtraHTTPHeaders` | Key/value pairs |
-| `userAgent` | Custom UA (does NOT bypass bot detection) |
+| Parameter             | Description                               |
+| --------------------- | ----------------------------------------- |
+| `cookies`             | `[{name, value, domain, path}]`           |
+| `authenticate`        | HTTP basic auth credentials               |
+| `setExtraHTTPHeaders` | Key/value pairs                           |
+| `userAgent`           | Custom UA (does NOT bypass bot detection) |
 
 ### Content injection
 
-| Parameter | Description |
-|---|---|
-| `addScriptTag` | `[{"content": "..."}]` or `[{"url": "..."}]` |
-| `addStyleTag` | `[{"content": "..."}]` or `[{"url": "..."}]` |
-| `setJavaScriptEnabled` | Disable JS (default: true) |
+| Parameter              | Description                                  |
+| ---------------------- | -------------------------------------------- |
+| `addScriptTag`         | `[{"content": "..."}]` or `[{"url": "..."}]` |
+| `addStyleTag`          | `[{"content": "..."}]` or `[{"url": "..."}]` |
+| `setJavaScriptEnabled` | Disable JS (default: true)                   |
 
 ### Viewport
 

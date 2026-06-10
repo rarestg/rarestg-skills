@@ -28,23 +28,23 @@ npm run check
 
 ## Skills
 
-| Skill | Description |
-|-------|-------------|
-| [merge-stack](skills/merge-stack/) | Merge a linear stack of GitHub PRs into main one by one |
-| [skill-review](skills/skill-review/) | Review a skill for quality, portability, completeness, and correctness |
-| [make-a-new-skill](skills/make-a-new-skill/) | Create or update a concise agent skill from a workflow, SOP, or repeated task |
-| [coding-agent](skills/coding-agent/) | Orchestrate Codex CLI and Claude Code as background assistants via tmux |
-| [delegated-delivery](skills/delegated-delivery/) | Run tickets through a layered main PM -> sub-PM -> worker -> reviewer delivery loop |
-| [graphify-architecture-review](skills/graphify-architecture-review/) | Use Graphify semantic graphs to analyze architecture and source-validate refactor opportunities |
-| [cf-browser](skills/cf-browser/) | Browse and scrape websites via Cloudflare Browser Rendering API |
-| [code-quality](skills/code-quality/) | Set up formatting, linting, type checking, and pre-commit hooks from day one |
-| [task-os](skills/task-os/) | Operating protocol using Taskwarrior as the continuity layer across conversations |
-| [install-skills](skills/install-skills/) | Install, discover, remove, and update agent skills via the npx skills CLI |
-| [stacked-diffs](skills/stacked-diffs/) | Break large changes into small, stacked PRs using vanilla git |
-| [agents-md](skills/agents-md/) | Create and maintain a concise AGENTS.md that routes agents to the repo's real sources of truth |
-| [execplan](skills/execplan/) | Write a self-contained execution plan for complex, multi-step implementation work |
-| [github-review-workflow](skills/github-review-workflow/) | Export a PR's inline review threads, CodeRabbit outside-diff comments, and nitpicks into clean local queues for triage and follow-through |
-| [export-traces-transcript](skills/export-traces-transcript/) | Export a Traces/Codex thread ID into a durable Markdown transcript |
+| Skill                                                                | Description                                                                                                                               |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| [merge-stack](skills/merge-stack/)                                   | Merge a linear stack of GitHub PRs into main one by one                                                                                   |
+| [skill-review](skills/skill-review/)                                 | Review a skill for quality, portability, completeness, and correctness                                                                    |
+| [make-a-new-skill](skills/make-a-new-skill/)                         | Create or update a concise agent skill from a workflow, SOP, or repeated task                                                             |
+| [coding-agent](skills/coding-agent/)                                 | Orchestrate Codex CLI and Claude Code as background assistants via tmux                                                                   |
+| [delegated-delivery](skills/delegated-delivery/)                     | Run tickets through a layered main PM -> sub-PM -> worker -> reviewer delivery loop                                                       |
+| [graphify-architecture-review](skills/graphify-architecture-review/) | Use Graphify semantic graphs to analyze architecture and source-validate refactor opportunities                                           |
+| [cf-browser](skills/cf-browser/)                                     | Browse and scrape websites via Cloudflare Browser Rendering API                                                                           |
+| [code-quality](skills/code-quality/)                                 | Set up formatting, linting, type checking, and pre-commit hooks from day one                                                              |
+| [task-os](skills/task-os/)                                           | Operating protocol using Taskwarrior as the continuity layer across conversations                                                         |
+| [install-skills](skills/install-skills/)                             | Install, discover, remove, and update agent skills via the npx skills CLI                                                                 |
+| [stacked-diffs](skills/stacked-diffs/)                               | Break large changes into small, stacked PRs using vanilla git                                                                             |
+| [agents-md](skills/agents-md/)                                       | Create and maintain a concise AGENTS.md that routes agents to the repo's real sources of truth                                            |
+| [execplan](skills/execplan/)                                         | Write a self-contained execution plan for complex, multi-step implementation work                                                         |
+| [github-review-workflow](skills/github-review-workflow/)             | Export a PR's inline review threads, CodeRabbit outside-diff comments, and nitpicks into clean local queues for triage and follow-through |
+| [export-traces-transcript](skills/export-traces-transcript/)         | Export a Traces/Codex thread ID into a durable Markdown transcript                                                                        |
 
 ---
 
@@ -96,10 +96,10 @@ Reference supporting files so the agent knows they exist:
 
 Portable frontmatter:
 
-| Field | Purpose |
-|-------|---------|
-| `name` | Skill identifier. Match the directory name and use lowercase hyphen-case. |
-| `description` | What the skill does and when to use it. This is the trigger surface. |
+| Field         | Purpose                                                                   |
+| ------------- | ------------------------------------------------------------------------- |
+| `name`        | Skill identifier. Match the directory name and use lowercase hyphen-case. |
+| `description` | What the skill does and when to use it. This is the trigger surface.      |
 
 Optional portable metadata such as `license`, `compatibility`, or `metadata` can
 be useful for distribution, but keep it brief.

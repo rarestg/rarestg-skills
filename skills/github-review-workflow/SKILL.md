@@ -8,7 +8,7 @@ description: >-
   comments without relying on noisy raw API blobs.
 disable-model-invocation: true
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, Agent
-argument-hint: "<pr-url>"
+argument-hint: '<pr-url>'
 user-invocable: true
 ---
 

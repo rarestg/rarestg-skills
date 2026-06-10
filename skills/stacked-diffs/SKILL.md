@@ -18,6 +18,7 @@ Break large work into a chain of small, dependent PRs. Each PR is one logical un
 **Move to a new stacked branch whenever the current diff reaches a natural boundary.** Do not accumulate a large changeset on one branch. Commit, push, open a PR, then branch off and keep going.
 
 A natural boundary is any of:
+
 - A self-contained logical step is complete (new type, new endpoint, new test file)
 - The diff is approaching ~200–400 changed lines
 - The next change serves a different concern than the current one
@@ -25,6 +26,7 @@ A natural boundary is any of:
 ## When to Stack
 
 Stack when the work has **multiple logical steps that build on each other**:
+
 - Scaffolding + core logic + edge cases
 - Data model + API endpoint + UI integration
 - Refactor + feature that depends on the refactor

@@ -10,7 +10,7 @@ description: >-
   Triggers on: "run codex", "use claude on", "spawn an agent", "second
   opinion", "delegate", "fan out", "review my work", "build with agents".
 allowed-tools: Bash, Read
-argument-hint: "<task description>"
+argument-hint: '<task description>'
 ---
 
 # Coding Agent
@@ -23,16 +23,16 @@ Spawn agents liberally — if a task can be done independently by another agent,
 
 Use `remain-on-exit on` so the pane persists after the process exits — output stays capturable.
 
-| Operation    | Command                                                  |
-| ------------ | -------------------------------------------------------- |
+| Operation    | Command                                                             |
+| ------------ | ------------------------------------------------------------------- |
 | Start        | `tmux new-session -d -s NAME -c DIR "cmd" \; set remain-on-exit on` |
-| Read output  | `tmux capture-pane -t NAME -p -S -` (full scrollback)   |
-| Check status | `tmux display-message -t NAME -p '#{pane_dead}'` → `1` if exited |
-| Exit code    | `tmux display-message -t NAME -p '#{pane_dead_status}'` |
-| Send raw     | `tmux send-keys -t NAME "y"` (no Enter)                 |
-| Send Ctrl-C  | `tmux send-keys -t NAME C-c`                            |
-| Kill         | `tmux kill-session -t NAME`                              |
-| List all     | `tmux list-sessions`                                     |
+| Read output  | `tmux capture-pane -t NAME -p -S -` (full scrollback)               |
+| Check status | `tmux display-message -t NAME -p '#{pane_dead}'` → `1` if exited    |
+| Exit code    | `tmux display-message -t NAME -p '#{pane_dead_status}'`             |
+| Send raw     | `tmux send-keys -t NAME "y"` (no Enter)                             |
+| Send Ctrl-C  | `tmux send-keys -t NAME C-c`                                        |
+| Kill         | `tmux kill-session -t NAME`                                         |
+| List all     | `tmux list-sessions`                                                |
 
 Use descriptive session names: `codex-auth-refactor`, `claude-fix-78`. Kill sessions after capturing output to avoid sprawl.
 
@@ -56,26 +56,26 @@ Progress streams to stderr, final result to stdout — enables piping: `codex ex
 
 ### Flags
 
-| Flag                          | Effect                                     |
-| ----------------------------- | ------------------------------------------ |
-| `exec "prompt"`               | One-shot execution, exits when done        |
-| `--full-auto`                 | Shortcut: `-a on-request` + `--sandbox workspace-write` (auto-approves in `exec` mode) |
-| `--sandbox read-only`         | Read-only sandbox (default for `exec`). Also: `workspace-write`, `danger-full-access` |
-| `--yolo`                      | No sandbox, no approvals (hidden alias for `--dangerously-bypass-approvals-and-sandbox`) |
-| `--model, -m`                 | Override model for this run                |
-| `--json`                      | JSONL stream of all events to stdout       |
-| `-o <path>`                   | Write final message to file               |
-| `--output-schema <path>`      | JSON Schema file — validates final response shape |
-| `--image, -i <path>`          | Attach images to prompt (screenshots, diagrams). Repeatable |
-| `--add-dir <path>`            | Grant write access to additional directories. Repeatable |
-| `--skip-git-repo-check`       | Run outside a git repository               |
-| `exec resume <SESSION_ID>`    | Continue an exec session by ID (pass a follow-up prompt after the ID) |
+| Flag                       | Effect                                                                                   |
+| -------------------------- | ---------------------------------------------------------------------------------------- |
+| `exec "prompt"`            | One-shot execution, exits when done                                                      |
+| `--full-auto`              | Shortcut: `-a on-request` + `--sandbox workspace-write` (auto-approves in `exec` mode)   |
+| `--sandbox read-only`      | Read-only sandbox (default for `exec`). Also: `workspace-write`, `danger-full-access`    |
+| `--yolo`                   | No sandbox, no approvals (hidden alias for `--dangerously-bypass-approvals-and-sandbox`) |
+| `--model, -m`              | Override model for this run                                                              |
+| `--json`                   | JSONL stream of all events to stdout                                                     |
+| `-o <path>`                | Write final message to file                                                              |
+| `--output-schema <path>`   | JSON Schema file — validates final response shape                                        |
+| `--image, -i <path>`       | Attach images to prompt (screenshots, diagrams). Repeatable                              |
+| `--add-dir <path>`         | Grant write access to additional directories. Repeatable                                 |
+| `--skip-git-repo-check`    | Run outside a git repository                                                             |
+| `exec resume <SESSION_ID>` | Continue an exec session by ID (pass a follow-up prompt after the ID)                    |
 
 Top-level subcommands (not `exec` flags):
 
-| Subcommand                    | Effect                                     |
-| ----------------------------- | ------------------------------------------ |
-| `fork <SESSION_ID>`           | Branch an interactive session into a new thread |
+| Subcommand          | Effect                                          |
+| ------------------- | ----------------------------------------------- |
+| `fork <SESSION_ID>` | Branch an interactive session into a new thread |
 
 `--full-auto` vs `--yolo`: `--full-auto` runs in a `workspace-write` sandbox with model-driven approval — safe for most building tasks. `--yolo` removes all guardrails (no sandbox, no approvals). Prefer `--full-auto`; only use `--yolo` when the agent needs unrestricted system access (e.g., installing packages, modifying system files).
 
@@ -115,19 +115,19 @@ tmux capture-pane -t codex-task -p -S -
 
 ### Flags
 
-| Flag                                | Effect                             |
-| ----------------------------------- | ---------------------------------- |
-| `-p "prompt"`                       | Print mode — non-interactive, exits when done |
-| `--allowedTools Bash Read Edit`     | Auto-approve specific tools without prompting (prefix matching: `Bash(git:*)`) |
-| `--tools Bash Read Edit`            | Restrict which tools are *available* (agent cannot use unlisted tools at all) |
-| `--dangerously-skip-permissions`    | Auto-approve all tool use (use with caution) |
-| `--model sonnet`                    | Set model (`haiku` for cheap tasks, `opus` for complex ones, `sonnet` default) |
-| `--output-format json`              | Structured output with session ID and metadata (`text`, `json`, `stream-json`) |
-| `--append-system-prompt "..."`      | Add instructions while keeping default behavior |
-| `--append-system-prompt-file path`  | Same, but load from file — ideal for batch patterns (write once, reuse per agent) |
-| `--add-dir ../other-project`        | Add extra directories to agent's context |
-| `--resume SESSION_ID`              | Continue a specific conversation by ID |
-| `--no-session-persistence`          | Don't save session to disk (for throwaway agents) |
+| Flag                               | Effect                                                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------- |
+| `-p "prompt"`                      | Print mode — non-interactive, exits when done                                     |
+| `--allowedTools Bash Read Edit`    | Auto-approve specific tools without prompting (prefix matching: `Bash(git:*)`)    |
+| `--tools Bash Read Edit`           | Restrict which tools are _available_ (agent cannot use unlisted tools at all)     |
+| `--dangerously-skip-permissions`   | Auto-approve all tool use (use with caution)                                      |
+| `--model sonnet`                   | Set model (`haiku` for cheap tasks, `opus` for complex ones, `sonnet` default)    |
+| `--output-format json`             | Structured output with session ID and metadata (`text`, `json`, `stream-json`)    |
+| `--append-system-prompt "..."`     | Add instructions while keeping default behavior                                   |
+| `--append-system-prompt-file path` | Same, but load from file — ideal for batch patterns (write once, reuse per agent) |
+| `--add-dir ../other-project`       | Add extra directories to agent's context                                          |
+| `--resume SESSION_ID`              | Continue a specific conversation by ID                                            |
+| `--no-session-persistence`         | Don't save session to disk (for throwaway agents)                                 |
 
 **Variadic flag gotcha:** `--allowedTools` and `--tools` are variadic — they consume all following positional arguments, including the prompt. When using them, place `--` before the prompt to terminate option parsing:
 
@@ -142,7 +142,7 @@ claude -p --allowedTools Bash Read Edit -- "Fix the bug"
 echo "Fix the bug" | claude -p --allowedTools Bash Read Edit
 ```
 
-`--allowedTools` vs `--tools`: `--tools` controls what's *available*. `--allowedTools` controls what's *auto-approved*. Use both for tight scoping: `--tools Bash Read --allowedTools Read` makes Bash available but still prompts, while Read is auto-approved.
+`--allowedTools` vs `--tools`: `--tools` controls what's _available_. `--allowedTools` controls what's _auto-approved_. Use both for tight scoping: `--tools Bash Read --allowedTools Read` makes Bash available but still prompts, while Read is auto-approved.
 
 Stdin is piped as context: `gh pr diff 130 | claude -p "Review this diff"`.
 

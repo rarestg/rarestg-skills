@@ -12,7 +12,7 @@ description: >-
   this for independent review", or "close this ticket out with review". Skip
   trivial fixes and tasks that are still too vague to delegate.
 allowed-tools: Bash, Read, Glob, Grep, Write, Edit, Agent
-argument-hint: "<ticket or delivery objective>"
+argument-hint: '<ticket or delivery objective>'
 ---
 
 # Delegated Delivery

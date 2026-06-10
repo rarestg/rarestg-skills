@@ -25,6 +25,7 @@ task +waiting list             # blocked on others
 ```
 
 For software tasks, also check the repo:
+
 ```bash
 git -C <repo-path> status --short
 git -C <repo-path> log --oneline -5
@@ -33,6 +34,7 @@ git -C <repo-path> log --oneline -5
 Skip git checks for non-code domains (stocks, life, errands).
 
 After orienting, fix state hygiene:
+
 - Every active project should have at least one `+next` task.
 - Re-evaluate stale `+waiting` tasks.
 - Close work that's already done but not yet marked.
@@ -60,6 +62,7 @@ task summary
 ```
 
 Deliver a concise rundown:
+
 - Overdue (needs attention now)
 - Due today
 - Top next actions across projects
@@ -83,6 +86,7 @@ Otherwise capture fast, organize later.
 ### Evidence over claims
 
 Progress means different things per domain:
+
 - **Code:** a commit, a file written, a test result.
 - **Stocks/research:** an annotation, an analysis note, a saved artifact.
 - **Life/errands:** marking the task done is sufficient.
@@ -104,12 +108,14 @@ task add project:X "Next step" +next
 ```
 
 When blocked:
+
 ```
 task <id> modify +blocked
 task add project:X "Unblock: <reason>" +next
 ```
 
 When waiting on someone/something:
+
 ```
 task <id> modify +waiting
 task <id> annotate "Waiting on: <who/what>"
@@ -118,6 +124,7 @@ task <id> annotate "Waiting on: <who/what>"
 ## Stall detection
 
 Flag work as stalled when:
+
 - An active task has no progress and no annotation since it was started.
 - A previous attempt failed with no retry or blocker task created.
 - A plan was made but no execution task exists.
@@ -185,6 +192,7 @@ Run `task projects` first. Follow existing structure before creating new ones.
 ### Dynamic grouping
 
 Start narrow — one task or sub-project per distinct concern:
+
 ```
 stocks.AAPL                        # single ticker
 inbox.jodie_lamp                   # one conversation thread
@@ -192,6 +200,7 @@ work.acme.backend_auth             # one work stream
 ```
 
 When multiple tasks share context, consolidate under a topic:
+
 ```
 inbox.nordic_lamps_feb2026         # absorbs jodie_lamp + marcus_lamp + ikea_order
 stocks.ai_chip_plays               # groups NVDA + AMD analysis
