@@ -1,20 +1,18 @@
 ---
 name: make-a-new-skill
 description: >-
-  Create or update a concise agent skill from a repeated workflow, lesson
-  learned, SOP, tool pattern, or source notes. Use when asked to make a new
-  skill, improve an existing skill, write a SKILL.md, turn instructions into a
-  skill, capture what was learned as a reusable skill, add a skill to this repo,
-  or package a repeatable agent workflow. Triggers on: "create a skill", "write
-  a skill", "make this a skill", "turn this into a skill", "turn this into a
-  SKILL.md", "make a new skill", "update this skill", "add a new skill".
+  Write or update a concise portable agent skill from a repeated workflow,
+  lesson learned, SOP, tool pattern, or source notes. Use when asked to create a
+  skill, write a SKILL.md, turn instructions into a skill, capture a reusable
+  workflow, or improve an existing skill. Do not use for one-off facts, generic
+  advice, or workflows that do not need reusable local guidance.
 ---
 
 # Make a New Skill
 
-A skill is a short, reusable SOP that helps an AI agent or human repeat a task
-well next time. Make one when you finish something and think: "I learned a
-process here that I will probably need again."
+A skill is a short, reusable SOP that helps an AI agent repeat a task well next
+time. Make one when you finish something and think: "I learned a process here
+that I will probably need again."
 
 The goal is not to document everything. The goal is to capture the useful steps,
 decisions, shortcuts, tools, and gotchas so the next attempt is faster and
@@ -119,6 +117,17 @@ cost:
 - `scripts/` for deterministic code the agent should run instead of rewriting.
 - `assets/` for templates, images, logos, starter files, or output materials.
 
+Use wrapper scripts when exact command construction is fragile: many flags,
+tricky quoting, repeated CLI/API calls, pagination, retries, response parsing,
+or format conversion. Prefer a wrapper over asking the agent to reconstruct the
+same brittle command each time.
+
+Every nontrivial wrapper should include a short contract comment explaining its
+purpose, inputs, outputs, external dependencies, tested fixtures, and likely
+breakage points. Add skill-local tests under `tests/` that prove representative
+fixture behavior. Keep default tests offline; make live network or service tests
+opt-in.
+
 If the main instructions are enough, do not add extra files.
 
 If the skill has variants, keep selection guidance in `SKILL.md` and move
@@ -133,15 +142,7 @@ Common useful sections are `Purpose`, `Inputs`, `Workflow`, `Rules`,
 `Output Format`, `Gotchas`, and `Resources`. Use only the sections that help.
 Do not force a rigid template if another organization is clearer.
 
-### 8. Wire it into this repo
-
-When adding a skill here:
-
-1. Create `skills/<skill-name>/SKILL.md`.
-2. Add `"./skills/<skill-name>"` to `.claude-plugin/marketplace.json`.
-3. Add one README table row with a short description.
-
-### 9. Test it on a real example
+### 8. Test it on a real example
 
 Try the skill against a real task or source note. Ask:
 
@@ -151,8 +152,11 @@ Try the skill against a real task or source note. Ask:
 - Was anything too wordy?
 - Would this save time next time?
 
-Then revise. Run `/skill-review skills/<skill-name>` or apply the same checklist
-manually before calling the skill done.
+If the skill includes scripts, run their tests. If a wrapper has no tests, add
+tests or explain why it is trivial enough not to need them.
+
+Then revise. Invoke the skill-review skill on `skills/<skill-name>`, or apply
+the same checklist manually before calling the skill done.
 
 ## Quality Bar
 
@@ -164,5 +168,9 @@ A good skill is lean and practical. It answers:
 - What did we learn last time?
 - What mistakes should I avoid?
 - What should the final result look like?
+
+When creating or editing a skill, produce the complete `SKILL.md` or a clear
+patch-level description of the changes, depending on whether the user asked for
+implementation or review.
 
 A good skill is not a manual. It is a reusable shortcut from experience.
