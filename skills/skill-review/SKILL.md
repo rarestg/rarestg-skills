@@ -84,6 +84,26 @@ rest of the review in this.
 - Are there auxiliary files that add clutter, such as extra READMEs, changelogs,
   quick references, or notes about how the skill was created?
 
+**Wrapper scripts:**
+
+- Is a script justified by fragility, repetition, parsing, side effects, or
+  complex CLI/API usage?
+- Would a wrapper reduce errors compared with prose instructions?
+- Does the wrapper have a clear entry point, `--help`, input validation, stable
+  output, and useful errors?
+- Does it avoid hard-coded local paths, secrets, and hidden destructive
+  behavior?
+- Does it document its contract well enough to debug future upstream changes?
+
+**Tests:**
+
+- Do nontrivial wrappers have skill-local tests?
+- Do tests use fixtures to preserve the input/output shape that once worked?
+- Are default tests offline and deterministic?
+- Are live integration tests gated behind an explicit opt-in?
+- If a repo-level test command exists, can it discover and run the skill-local
+  tests?
+
 **Portability:**
 
 - Does the skill avoid confusing skills with repo instructions such as

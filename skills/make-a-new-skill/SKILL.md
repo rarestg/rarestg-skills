@@ -117,6 +117,17 @@ cost:
 - `scripts/` for deterministic code the agent should run instead of rewriting.
 - `assets/` for templates, images, logos, starter files, or output materials.
 
+Use wrapper scripts when exact command construction is fragile: many flags,
+tricky quoting, repeated CLI/API calls, pagination, retries, response parsing,
+or format conversion. Prefer a wrapper over asking the agent to reconstruct the
+same brittle command each time.
+
+Every nontrivial wrapper should include a short contract comment explaining its
+purpose, inputs, outputs, external dependencies, tested fixtures, and likely
+breakage points. Add skill-local tests under `tests/` that prove representative
+fixture behavior. Keep default tests offline; make live network or service tests
+opt-in.
+
 If the main instructions are enough, do not add extra files.
 
 If the skill has variants, keep selection guidance in `SKILL.md` and move
@@ -140,6 +151,9 @@ Try the skill against a real task or source note. Ask:
 - Was anything important missing?
 - Was anything too wordy?
 - Would this save time next time?
+
+If the skill includes scripts, run their tests. If a wrapper has no tests, add
+tests or explain why it is trivial enough not to need them.
 
 Then revise. Invoke the skill-review skill on `skills/<skill-name>`, or apply
 the same checklist manually before calling the skill done.
