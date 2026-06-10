@@ -139,9 +139,7 @@ WALKTHROUGH_BLOCK_PATTERN = re.compile(
     r"<!--\s*walkthrough_start\s*-->(.*?)<!--\s*walkthrough_end\s*-->",
     flags=re.S | re.I,
 )
-WALKTHROUGH_TRIM_AFTER_PATTERN = re.compile(
-    r"(?mi)^\s*##\s+Estimated Code Review Effort\b.*$"
-)
+WALKTHROUGH_TRIM_AFTER_PATTERN = re.compile(r"(?mi)^\s*##\s+Estimated Code Review Effort\b.*$")
 DETAILS_TAG_PATTERN = re.compile(r"</?details\b[^>]*>", flags=re.I)
 DETAIL_SUMMARY_PATTERN = re.compile(
     r"<summary\b[^>]*>(.*?)</summary>",
@@ -153,9 +151,7 @@ BLOCKQUOTE_WRAPPER_PATTERN = re.compile(
     r"^\s*<blockquote\b[^>]*>\s*(.*?)\s*</blockquote>\s*$",
     flags=re.S | re.I,
 )
-NITPICK_ITEM_START_PATTERN = re.compile(
-    r"(?m)^\s*`(?P<line_range>[^`]+)`:\s*(?P<title>.+?)\s*$"
-)
+NITPICK_ITEM_START_PATTERN = re.compile(r"(?m)^\s*`(?P<line_range>[^`]+)`:\s*(?P<title>.+?)\s*$")
 
 
 def graphql_fetch(
@@ -236,9 +232,7 @@ def fetch_all_review_thread_comments(
             comments.append(comment)
 
         fetch_comments = initial_connection["pageInfo"]["hasNextPage"]
-        comments_cursor = (
-            initial_connection["pageInfo"]["endCursor"] if fetch_comments else None
-        )
+        comments_cursor = initial_connection["pageInfo"]["endCursor"] if fetch_comments else None
 
     while fetch_comments:
         if comments_cursor is None and comments:
@@ -266,9 +260,7 @@ def fetch_all_review_thread_comments(
             comments.append(comment)
 
         fetch_comments = comments_connection["pageInfo"]["hasNextPage"]
-        comments_cursor = (
-            comments_connection["pageInfo"]["endCursor"] if fetch_comments else None
-        )
+        comments_cursor = comments_connection["pageInfo"]["endCursor"] if fetch_comments else None
 
     return {
         "pageInfo": {"hasNextPage": False, "endCursor": None},
@@ -343,9 +335,7 @@ def fetch_pull_request(owner: str, repo: str, number: int) -> dict[str, Any]:
                     seen_review_ids.add(review_id)
                 reviews.append(review)
             fetch_reviews = reviews_connection["pageInfo"]["hasNextPage"]
-            reviews_cursor = (
-                reviews_connection["pageInfo"]["endCursor"] if fetch_reviews else None
-            )
+            reviews_cursor = reviews_connection["pageInfo"]["endCursor"] if fetch_reviews else None
 
         if fetch_threads:
             threads_connection = pr["reviewThreads"]
@@ -583,7 +573,9 @@ def render_thread_file(
     comments_truncated_on_export = thread["comments"]["pageInfo"]["hasNextPage"]
 
     body_sections = []
-    for comment_index, (comment, text) in enumerate(zip(comments, thread_texts, strict=True), start=1):
+    for comment_index, (comment, text) in enumerate(
+        zip(comments, thread_texts, strict=True), start=1
+    ):
         comment_author = comment["author"]["login"] if comment.get("author") else "unknown"
         section = "\n".join(
             [
@@ -1144,14 +1136,10 @@ def next_read_paths(manifest: dict[str, Any]) -> list[str]:
     walkthrough_file = manifest.get("walkthrough_file")
     if walkthrough_file:
         paths.append(str(walkthrough_file))
-    if any(
-        item.get("status_folder") == "todo"
-        for item in manifest["actionable_threads"]
-    ):
+    if any(item.get("status_folder") == "todo" for item in manifest["actionable_threads"]):
         paths.append("todo/")
     if any(
-        item.get("status_folder") == "outside-diff"
-        for item in manifest["outside_diff_comments"]
+        item.get("status_folder") == "outside-diff" for item in manifest["outside_diff_comments"]
     ):
         paths.append("outside-diff/")
     if any(item.get("status_folder") == "nitpicks" for item in manifest["nitpicks"]):
@@ -1166,9 +1154,7 @@ def render_export_summary(*, pr_dir: Path, manifest: dict[str, Any]) -> str:
     nitpicks = manifest["nitpicks"]
     review_summaries = manifest["review_summaries"]
     walkthrough_file = manifest.get("walkthrough_file")
-    walkthrough_status = (
-        f"present ({walkthrough_file})" if walkthrough_file else "missing"
-    )
+    walkthrough_status = f"present ({walkthrough_file})" if walkthrough_file else "missing"
     inline_breakdown = render_status_breakdown(
         actionable_threads,
         primary_status="todo",
@@ -1180,8 +1166,7 @@ def render_export_summary(*, pr_dir: Path, manifest: dict[str, Any]) -> str:
         f"PR: #{pr['number']} {pr['title']}",
         f"Bundle: {pr_dir}",
         f"Walkthrough: {walkthrough_status}",
-        "Inline review threads: "
-        f"{len(actionable_threads)} included ({inline_breakdown})",
+        f"Inline review threads: {len(actionable_threads)} included ({inline_breakdown})",
         f"Outside-diff items: {len(outside_diff_comments)} included",
         f"Nitpicks: {len(nitpicks)} included",
         f"Review summaries: {len(review_summaries)} retained as metadata",
@@ -1354,7 +1339,10 @@ def export_review_bundle(
     ignored_dir.mkdir(parents=True, exist_ok=True)
 
     top_level_comments = payload["comments"]
-    walkthrough_comment = next((comment for comment in top_level_comments if is_coderabbit_walkthrough_comment(comment)), None)
+    walkthrough_comment = next(
+        (comment for comment in top_level_comments if is_coderabbit_walkthrough_comment(comment)),
+        None,
+    )
     walkthrough_path: Path | None = None
     if walkthrough_comment:
         walkthrough_path = context_dir / "01-coderabbit-walkthrough.md"

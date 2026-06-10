@@ -1,0 +1,25 @@
+{
+  "name": "rarestg-skills",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Personal AI coding agent skills and SOPs",
+  "scripts": {
+    "format": "npm run format:docs && npm run format:python",
+    "format:docs": "prettier --write \"README.md\" \"skills/**/*.md\" \".claude-plugin/**/*.json\" \".github/**/*.yml\" \"package.json\"",
+    "format:python": "ruff check skills/github-review-workflow/scripts skills/github-review-workflow/tests --fix && ruff format skills/github-review-workflow/scripts skills/github-review-workflow/tests",
+    "lint": "npm run lint:markdown && npm run lint:node && npm run lint:python",
+    "lint:markdown": "markdownlint-cli2 \"README.md\" \"skills/**/*.md\"",
+    "lint:node": "for file in scripts/*.mjs skills/export-traces-transcript/scripts/*.mjs skills/export-traces-transcript/tests/*.mjs; do node --check \"$file\"; done",
+    "lint:python": "ruff check skills/github-review-workflow/scripts skills/github-review-workflow/tests && ruff format --check skills/github-review-workflow/scripts skills/github-review-workflow/tests",
+    "test": "npm run test:node && npm run test:python && npm run test:repo",
+    "test:node": "node --test skills/export-traces-transcript/tests/*.test.mjs",
+    "test:python": "python -m unittest discover -s skills/github-review-workflow/tests -p 'test_*.py'",
+    "test:repo": "node scripts/validate-skills.mjs",
+    "check": "npm run lint && npm test",
+    "check:fix": "npm run format && npm run check"
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "0.22.1",
+    "prettier": "3.8.4"
+  }
+}

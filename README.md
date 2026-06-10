@@ -9,6 +9,23 @@ Personal collection of [Agent Skills](https://agentskills.io) and SOPs for AI co
 /plugin install rarestg-skills@rarestg-skills
 ```
 
+## Development
+
+Install the local quality tools:
+
+```bash
+npm ci
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -r requirements-dev.txt
+```
+
+Run the CI-equivalent checks:
+
+```bash
+npm run check
+```
+
 ## Skills
 
 | Skill | Description |

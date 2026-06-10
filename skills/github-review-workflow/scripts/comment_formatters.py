@@ -67,9 +67,7 @@ def normalize_detail_summary(text: str) -> str:
     return cleaned.strip().lower()
 
 
-def strip_coderabbit_detail_blocks(
-    text: str, *, strip_ai_prompts: bool, for_title: bool
-) -> str:
+def strip_coderabbit_detail_blocks(text: str, *, strip_ai_prompts: bool, for_title: bool) -> str:
     if not text or "<details>" not in text:
         return text
 
@@ -85,9 +83,7 @@ def strip_coderabbit_detail_blocks(
                 return "\n"
             return "\n🤖 Prompt for AI Agents\n\n" + body + "\n"
 
-        cleaned_summary = strip_markdown_wrappers(
-            re.sub(r"<[^>]+>", "", match.group(1)).strip()
-        )
+        cleaned_summary = strip_markdown_wrappers(re.sub(r"<[^>]+>", "", match.group(1)).strip())
         if cleaned_summary:
             return f"\n{cleaned_summary}\n\n{body}\n"
         return "\n" + body + "\n"
@@ -109,9 +105,7 @@ def _is_status_line(line: str) -> bool:
 
 
 def _is_analysis_chain_residue(line: str) -> bool:
-    return line.startswith(ANALYSIS_RESIDUE_PREFIXES) or bool(
-        re.match(r"^\d+:\s+https?://", line)
-    )
+    return line.startswith(ANALYSIS_RESIDUE_PREFIXES) or bool(re.match(r"^\d+:\s+https?://", line))
 
 
 def _consume_script_block(lines: list[str], start_index: int) -> int:
@@ -122,9 +116,7 @@ def _consume_script_block(lines: list[str], start_index: int) -> int:
         if stripped.startswith("Length of output:"):
             break
 
-    while index < len(lines) and (
-        not lines[index].strip() or lines[index].strip() == "---"
-    ):
+    while index < len(lines) and (not lines[index].strip() or lines[index].strip() == "---"):
         index += 1
 
     return index
@@ -203,9 +195,7 @@ def _consume_analysis_chain(lines: list[str], start_index: int) -> int:
     return index
 
 
-def _strip_noise_blocks(
-    lines: list[str], *, strip_ai_prompts: bool, for_title: bool
-) -> list[str]:
+def _strip_noise_blocks(lines: list[str], *, strip_ai_prompts: bool, for_title: bool) -> list[str]:
     filtered: list[str] = []
     index = 0
 
@@ -229,9 +219,8 @@ def _strip_noise_blocks(
             continue
 
         if (
-            (strip_ai_prompts or for_title)
-            and stripped == "Verify each finding against the current code and only fix it if needed."
-        ):
+            strip_ai_prompts or for_title
+        ) and stripped == "Verify each finding against the current code and only fix it if needed.":
             index += 1
             continue
 
