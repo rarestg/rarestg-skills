@@ -14,7 +14,7 @@ Personal collection of [Agent Skills](https://agentskills.io) and SOPs for AI co
 | Skill | Description |
 |-------|-------------|
 | [merge-stack](skills/merge-stack/) | Merge a linear stack of GitHub PRs into main one by one |
-| [skill-review](skills/skill-review/) | Review a skill for quality, completeness, and correctness |
+| [skill-review](skills/skill-review/) | Review a skill for quality, portability, completeness, and correctness |
 | [make-a-new-skill](skills/make-a-new-skill/) | Create or update a concise agent skill from a workflow, SOP, or repeated task |
 | [coding-agent](skills/coding-agent/) | Orchestrate Codex CLI and Claude Code as background assistants via tmux |
 | [delegated-delivery](skills/delegated-delivery/) | Run tickets through a layered main PM -> sub-PM -> worker -> reviewer delivery loop |
@@ -32,9 +32,15 @@ Personal collection of [Agent Skills](https://agentskills.io) and SOPs for AI co
 
 ## Creating a new skill
 
+A skill is a short, reusable SOP that helps an AI agent repeat a task well. The
+portable baseline is intentionally small: a directory with `SKILL.md`,
+frontmatter containing `name` and `description`, Markdown instructions, and
+optional supporting files.
+
 ### Structure
 
-Every skill is a directory with a `SKILL.md` entrypoint. Optionally include scripts, references, and assets:
+Every skill is a directory with a `SKILL.md` entrypoint. Optionally include
+scripts, references, and assets:
 
 ```
 skill-name/
@@ -50,20 +56,15 @@ skill-name/
 
 ### SKILL.md
 
-Two parts: YAML frontmatter and markdown body.
+Two parts: YAML frontmatter and Markdown body. For a portable skill, start with
+only `name` and `description`:
 
 ```yaml
 ---
-name: my-skill                      # Lowercase, hyphens, max 64 chars. Becomes /my-skill.
-description: >-                     # Max 1024 chars. This is the ONLY thing the agent sees
-  What this skill does and when      # at startup — it drives auto-triggering. Be specific
-  to use it. Include trigger phrases # about triggers and use cases.
+name: my-skill                      # Lowercase, hyphens, max 64 chars.
+description: >-                     # What the skill does and when to use it.
+  Include trigger phrases, scope,
   and concrete scenarios.
-disable-model-invocation: true      # Only user can invoke via /my-skill. Use for side-effects.
-allowed-tools: Bash(gh *), Read     # Restrict tools when skill is active.
-context: fork                       # Run in isolated subagent (no conversation history).
-agent: Explore                      # Subagent type when context: fork. Default: general-purpose.
-argument-hint: "[issue-number]"     # Shown in autocomplete.
 ---
 
 Instructions go here. Keep under 500 lines.
@@ -73,29 +74,40 @@ Reference supporting files so the agent knows they exist:
 - For the schema, see [schema.md](references/schema.md)
 ```
 
-### Frontmatter fields
+### Metadata and runtime controls
 
-| Field | Default | Purpose |
-|-------|---------|---------|
-| `name` | directory name | Slash command name |
-| `description` | first paragraph | When the agent should use this skill |
-| `disable-model-invocation` | `false` | `true` = manual `/name` only, no auto-trigger |
-| `user-invocable` | `true` | `false` = hidden from `/` menu, agent-only |
-| `allowed-tools` | all | Comma-separated tool restrictions |
-| `context` | inline | `fork` = run in isolated subagent |
-| `agent` | `general-purpose` | Subagent type when `context: fork` |
-| `model` | inherited | Override model for this skill |
-| `argument-hint` | none | Autocomplete hint for expected args |
+Portable frontmatter:
+
+| Field | Purpose |
+|-------|---------|
+| `name` | Skill identifier. Match the directory name and use lowercase hyphen-case. |
+| `description` | What the skill does and when to use it. This is the trigger surface. |
+
+Optional portable metadata such as `license`, `compatibility`, or `metadata` can
+be useful for distribution, but keep it brief.
+
+Behavior controls are runtime-specific. Invocation policy, tool permissions,
+argument substitution, subagents, hooks, shell injection, and UI visibility vary
+between Codex, Claude Code, and other agents. Add those fields only when the
+skill intentionally targets a runtime that documents them.
+
+For destructive workflows such as deploys, merges, sends, deletes, or
+publishing, use the target runtime's explicit-invocation, permission, or policy
+mechanism. Do not treat a generic `SKILL.md` body as a safety boundary.
 
 ### Progressive disclosure
 
 Context is expensive. Skills load in three levels — only pay for what you use:
 
-**Level 1 — Metadata (always loaded, ~100 tokens):** The `description` from frontmatter. This is how the agent decides whether to trigger the skill. Put all "when to use" info here, not in the body.
+**Level 1 — Metadata:** The skill name, description, and path. This is how the
+agent decides whether to trigger the skill. Put all "when to use" info in the
+description, not only in the body.
 
-**Level 2 — SKILL.md body (loaded when triggered, <5k tokens):** Instructions, workflows, examples. Keep it lean. Link to reference files for details rather than inlining everything.
+**Level 2 — SKILL.md body:** Instructions, workflows, examples. Keep it lean.
+Link to reference files for details rather than inlining everything.
 
-**Level 3 — Bundled files (loaded as needed, unlimited):** The agent reads reference files or executes scripts only when the task requires them. Scripts run via bash and only their output enters context — the source code never does.
+**Level 3 — Bundled files:** The agent reads reference files or executes scripts
+only when the task requires them.
 
 ```
 User asks something → Agent checks descriptions (Level 1)
@@ -104,39 +116,22 @@ User asks something → Agent checks descriptions (Level 1)
                     → Task needs transform? Runs scripts/transform.py (Level 3)
 ```
 
-### Arguments and dynamic context
-
-Use `$ARGUMENTS` (or `$0`, `$1`, `$2`) for positional args:
-
-```yaml
----
-name: fix-issue
----
-Fix GitHub issue $0 following our coding standards.
-```
-
-`/fix-issue 123` → "Fix GitHub issue 123 following our coding standards."
-
-Use `` !`command` `` to inject shell output before the agent sees the prompt:
-
-```yaml
----
-name: pr-summary
----
-## PR diff
-!`gh pr diff`
-
-Summarize this pull request.
-```
-
 ### Design guidelines
 
-1. **Only add what the agent doesn't already know.** AI agents are smart. Don't explain how git works — explain your specific workflow.
-2. **Match freedom to fragility.** Open field (many valid approaches) → text guidance. Narrow bridge (must be exact) → specific scripts or commands.
-3. **One file per concern.** Don't put API docs, schemas, and examples in SKILL.md. Split them into reference files and link from SKILL.md.
-4. **Scripts for reliability.** If the agent would rewrite the same code every time, bundle it as a script. Scripts are token-efficient and deterministic.
-5. **Test scripts by running them.** Don't assume they work — execute them.
-6. **`disable-model-invocation: true` for anything destructive.** Deploys, merges, sends, deletes — always manual.
+1. **Capture reusable experience.** Good skills preserve repeatable steps,
+   decisions, shortcuts, tools, and gotchas.
+2. **Only add what the agent doesn't already know.** Don't explain general
+   reasoning or common tools; explain your specific workflow.
+3. **Match freedom to fragility.** Open field, many valid approaches: prose
+   guidance. Fragile or exact workflow: specific commands or scripts.
+4. **One file per concern.** Don't put API docs, schemas, and examples in
+   `SKILL.md`. Split them into reference files and link from `SKILL.md`.
+5. **Scripts for reliability.** If the agent would rewrite the same code every
+   time, bundle it as a script.
+6. **Avoid auxiliary docs.** Do not add extra READMEs, installation guides,
+   quick references, changelogs, or notes about how the skill was created.
+7. **Test on a real example.** Check that the skill triggers for the right task,
+   gives clear steps, and would save time next time. Run bundled scripts.
 
 ### Adding a skill to this repo
 

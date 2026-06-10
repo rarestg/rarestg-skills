@@ -8,8 +8,6 @@ description: >-
   or package a repeatable agent workflow. Triggers on: "create a skill", "write
   a skill", "make this a skill", "turn this into a skill", "turn this into a
   SKILL.md", "make a new skill", "update this skill", "add a new skill".
-allowed-tools: Bash, Read, Glob, Grep, Write, Edit
-argument-hint: "<skill idea or source notes>"
 ---
 
 # Make a New Skill
@@ -67,14 +65,20 @@ get chosen later, so make it specific:
 - concrete phrases the user might say
 - when not to use it, if misuse is likely
 
-Set frontmatter deliberately:
+Use portable frontmatter by default:
 
-- `disable-model-invocation: true` for destructive side effects such as merges,
-  deploys, sends, deletes, publishing, or irreversible external changes.
-- `allowed-tools` to the smallest practical set.
-- `argument-hint` when the skill expects a path, issue number, PR URL, or task.
-- `context`, `agent`, or `model` only when isolation or specialization is part
-  of the design.
+- `name` matches the directory and uses lowercase hyphen-case.
+- `description` explains what the skill does, when to use it, and when not to
+  use it if misuse is likely.
+
+Treat behavior controls as runtime-specific. Invocation policy, tool
+permissions, argument hints, subagents, hooks, shell injection, and UI visibility
+vary between agents. Add those fields only when the skill intentionally targets a
+runtime that documents them.
+
+For destructive workflows, use the target runtime's explicit-invocation,
+permission, or policy mechanism. Do not treat a generic `SKILL.md` body as a
+safety boundary.
 
 ### 4. Capture the repeatable workflow
 
