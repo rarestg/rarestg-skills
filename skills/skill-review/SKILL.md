@@ -1,81 +1,114 @@
 ---
 name: skill-review
-description: Review an agent skill for quality, completeness, and correctness. Evaluates purpose, approach, implementation, frontmatter, progressive disclosure, and whether scripts or references are needed. Use after creating or modifying a skill.
-disable-model-invocation: true
-allowed-tools: Read, Glob, Grep
-argument-hint: "[path/to/skill]"
+description: >-
+  Review an agent skill for quality, portability, completeness, and correctness.
+  Use after creating or modifying a skill, especially to check whether it
+  captures a repeatable workflow, uses clear name and description metadata,
+  stays lean, and places scripts, references, and assets only where useful.
 ---
 
 # Skill Review
 
-Review a skill and propose improvements only if genuinely needed. Bias toward leaving things alone. A short, focused skill is better than a comprehensive one that wastes tokens.
+Review a skill and propose improvements only if genuinely needed. Bias toward
+leaving things alone. A short, focused skill is better than a comprehensive one
+that wastes tokens.
+
+## Portable Baseline
+
+A portable skill is a directory with:
+
+- `SKILL.md` containing YAML frontmatter and Markdown instructions
+- `name` and `description` in frontmatter
+- optional `scripts/`, `references/`, and `assets/` when they earn their cost
+
+Treat behavior-controlling frontmatter beyond `name` and `description` as
+runtime-specific unless the target platform or open skill spec documents it.
+Do not require platform-specific fields for a generic skill.
 
 ## Process
 
 ### 1. Read everything
 
-Read all files in the skill directory: SKILL.md, any scripts, references, assets.
+Read all files in the skill directory: `SKILL.md`, scripts, references, assets,
+and platform metadata if present. Note the intended runtime only if the skill or
+repo declares one; do not assume Claude, Codex, or another agent by default.
 
 ### 2. State the intent
 
-In one sentence: what problem does this skill solve, and for whom? Ground the rest of the review in this.
+In one sentence: what problem does this skill solve, and for whom? Ground the
+rest of the review in this.
 
 ### 3. First-principles check
 
-- Is this the right approach to the problem?
-- Is it the simplest approach that works?
+- Is this a repeatable workflow, lesson learned, tool pattern, or local rule?
+- Is a skill the simplest useful way to preserve it?
 - Does the skill add value beyond what an AI agent already knows?
-- If the agent could do this without the skill, the skill may not be needed.
+- Could the same value be delivered with fewer instructions or files?
 
 ### 4. Review checklist
 
-**Frontmatter:**
-- Is `description` specific about WHEN to trigger? Does it include concrete phrases a user would say?
-- `disable-model-invocation: true` if the skill has side effects (merges, deploys, sends, deletes).
-- `allowed-tools` set to restrict scope to only what's needed?
-- `argument-hint` set if the skill takes arguments?
-- Are `context`, `agent`, `model`, `user-invocable`, or `hooks` relevant and missing?
+**Portable frontmatter:**
+
+- Does `name` match the skill directory and use short lowercase hyphen-case?
+- Is `description` specific about when to use the skill?
+- Does `description` front-load key trigger words and scope boundaries?
+- If extra frontmatter exists, is it documented for the target runtime or used
+  only as portable metadata?
+- Are platform-specific behavior fields intentional rather than cargo-culted?
 
 **Body:**
-- Under 500 lines? If over, move content to reference files.
-- Does every paragraph justify its token cost? Cut anything the agent already knows.
-- Are instructions concrete and actionable, not vague?
-- If files are referenced, is it clear when to load them?
+
+- Under 500 lines? If over, move detail to reference files.
+- Does every paragraph justify its token cost?
+- Are instructions concrete and actionable?
+- Does it capture inputs, repeatable steps, decisions, gotchas, and expected
+  output where those matter?
+- Does it avoid generic advice an agent already knows?
+- If files are referenced, is it clear when to load or use them?
 
 **Progressive disclosure:**
-- Is SKILL.md doing too much? Should content move to `references/`?
-- Would a bundled script be more reliable than prose instructions? (Yes if the agent would regenerate the same code every invocation.)
 
-**Scripts (if present):**
-- Do they actually run? Test them.
-- Are they necessary, or would instructions suffice?
+- Is `SKILL.md` doing too much?
+- Should long schemas, examples, policies, or variant-specific details move to
+  directly linked files under `references/`?
+- Would a bundled script be more reliable than prose instructions? Use scripts
+  when the agent would otherwise regenerate the same fragile code each time.
 
-**Bloat check:**
-- Is anything here that an AI agent already knows? Remove it.
-- Are there redundant explanations? Cut them.
-- Could the skill be shorter without losing effectiveness?
-- If the skill is fine as-is, say so. Do not invent improvements.
+**Resources:**
+
+- Scripts: do they actually run, and are they necessary?
+- References: are they discoverable from `SKILL.md`, non-duplicative, and loaded
+  only when useful?
+- Assets: are they output materials or templates rather than prose docs?
+- Are there auxiliary files that add clutter, such as extra READMEs, changelogs,
+  quick references, or notes about how the skill was created?
+
+**Portability:**
+
+- Does the skill avoid confusing skills with repo instructions such as
+  `AGENTS.md`, custom prompts, slash commands, or plugin packaging?
+- If the skill intentionally targets one runtime, does it say so clearly?
+- If the skill is meant to be generic, can another agent use the core workflow
+  from `SKILL.md` without relying on vendor-only fields?
 
 ### 5. Ask clarifying questions
 
-Before proposing any changes, ask the user about anything ambiguous: intent, scope, preferences, edge cases. Do not assume.
+Ask only when ambiguity would change the review: target runtime, intended users,
+side effects, required outputs, or whether supporting files are available.
 
 ### 6. Present findings
 
 Summarize:
-1. The skill's purpose (one sentence)
-2. What's working well
-3. Specific issues found (if any)
-4. Proposed changes with rationale for each
 
-If no changes are needed, say "No changes recommended" and stop. Do not manufacture improvements.
+1. The skill's purpose in one sentence.
+2. What is working well.
+3. Specific issues found, if any.
+4. Proposed changes with rationale for each.
 
-### 7. Apply changes (only with approval)
+If no changes are needed, say "No changes recommended" and stop. Do not
+manufacture improvements.
 
-Only after the user explicitly approves:
-1. Make the changes
-2. Stage the modified files
-3. Commit with a clear message
-4. Push
+### 7. Apply changes only when asked
 
-Never commit or push without explicit user approval.
+Do not edit, stage, commit, or push from a review request unless the user
+explicitly asks for implementation.
