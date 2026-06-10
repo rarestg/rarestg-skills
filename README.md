@@ -15,6 +15,7 @@ Personal collection of [Agent Skills](https://agentskills.io) and SOPs for AI co
 |-------|-------------|
 | [merge-stack](skills/merge-stack/) | Merge a linear stack of GitHub PRs into main one by one |
 | [skill-review](skills/skill-review/) | Review a skill for quality, completeness, and correctness |
+| [make-a-new-skill](skills/make-a-new-skill/) | Create or update a concise agent skill from a workflow, SOP, or repeated task |
 | [coding-agent](skills/coding-agent/) | Orchestrate Codex CLI and Claude Code as background assistants via tmux |
 | [delegated-delivery](skills/delegated-delivery/) | Run tickets through a layered main PM -> sub-PM -> worker -> reviewer delivery loop |
 | [graphify-architecture-review](skills/graphify-architecture-review/) | Use Graphify semantic graphs to analyze architecture and source-validate refactor opportunities |

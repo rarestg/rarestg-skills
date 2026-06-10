@@ -16,6 +16,7 @@
       "skills": [
         "./skills/merge-stack",
         "./skills/skill-review",
+        "./skills/make-a-new-skill",
         "./skills/coding-agent",
         "./skills/delegated-delivery",
         "./skills/graphify-architecture-review",
