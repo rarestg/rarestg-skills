@@ -1,0 +1,17 @@
+{
+  "config": {
+    "default": true,
+    "MD010": {
+      "code_blocks": false
+    },
+    "MD013": false,
+    "MD024": {
+      "siblings_only": true
+    },
+    "MD031": false,
+    "MD032": false,
+    "MD036": false,
+    "MD040": false,
+    "MD060": false
+  }
+}

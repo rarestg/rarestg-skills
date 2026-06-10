@@ -1,3 +1,7 @@
 .claude/
 *.skill
 __pycache__/
+node_modules/
+.ruff_cache/
+.tmp/
+.venv/

@@ -96,9 +96,7 @@ def review_item_type(metadata: dict[str, str]) -> str:
 def source_bundle_for_item(item_path: Path) -> Path:
     if item_path.parent.name in {"todo", "done", "ignored", "outside-diff", "nitpicks"}:
         return item_path.parent.parent
-    raise QueueError(
-        f"Review item path is not inside a known bundle status folder: {item_path}"
-    )
+    raise QueueError(f"Review item path is not inside a known bundle status folder: {item_path}")
 
 
 def draft_id_for(
@@ -311,18 +309,14 @@ def validate_fix_pr_url_for_draft(draft: dict[str, Any], fix_pr_url: object) -> 
     return fix_pr_url_text
 
 
-def stored_fix_pr_url_for_draft(
-    draft: dict[str, Any], *, require_url: bool
-) -> str | None:
+def stored_fix_pr_url_for_draft(draft: dict[str, Any], *, require_url: bool) -> str | None:
     if draft.get("disposition") != "fixed":
         return None
 
     fix_pr_url = normalized_fix_pr_url(draft.get("fix_pr_url"))
     if fix_pr_url is None:
         if require_url:
-            raise QueueError(
-                f"Fixed draft {draft['id']} requires a fix PR URL before posting."
-            )
+            raise QueueError(f"Fixed draft {draft['id']} requires a fix PR URL before posting.")
         return None
 
     return validate_fix_pr_url_for_draft(draft, fix_pr_url)
@@ -359,10 +353,7 @@ def validate_no_conflicting_fix_pr_urls(
     if conflicts:
         raise QueueError(
             "Some fixed drafts already have a different fix PR URL:\n"
-            + "\n".join(
-                f"- {draft.get('id')}: {draft.get('fix_pr_url')}"
-                for draft in conflicts
-            )
+            + "\n".join(f"- {draft.get('id')}: {draft.get('fix_pr_url')}" for draft in conflicts)
         )
 
 
@@ -805,8 +796,7 @@ def recover_posting_draft(
         raise QueueError(f"Draft {draft['id']} is not in posting state.")
     if bool(metadata_value_present(posted_reply_url)) == no_reply_posted:
         raise QueueError(
-            "Provide exactly one posting recovery outcome: "
-            "--posted-reply-url or --no-reply-posted."
+            "Provide exactly one posting recovery outcome: --posted-reply-url or --no-reply-posted."
         )
 
     recovered = dict(draft)
@@ -822,9 +812,7 @@ def recover_posting_draft(
         return post_draft(out_root=out_root, draft=recovered, dry_run=dry_run)
 
     recovered["status"] = "failed"
-    recovered["last_error"] = (
-        "Manual inspection confirmed no reply was posted; retry is allowed."
-    )
+    recovered["last_error"] = "Manual inspection confirmed no reply was posted; retry is allowed."
     if not dry_run:
         save_draft(out_root, recovered)
     return recovered
@@ -981,12 +969,9 @@ def print_preview(draft: dict[str, Any], *, fix_pr_url: str | None = None) -> No
         print(f"Item path: {draft.get('source_item_path')}")
 
     if blocked_fixed_reply:
+        print("Reply body: intentionally blocked until a fix PR URL is attached.")
         print(
-            "Reply body: intentionally blocked until a fix PR URL is attached."
-        )
-        print(
-            "Use preview --fix-pr-url <url> to render the final reply without "
-            "mutating the queue."
+            "Use preview --fix-pr-url <url> to render the final reply without mutating the queue."
         )
         return
 
@@ -1246,9 +1231,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     recover_posting_parser = subparsers.add_parser("recover-posting")
     recover_posting_parser.add_argument("draft_id")
-    recovery_outcome = recover_posting_parser.add_mutually_exclusive_group(
-        required=True
-    )
+    recovery_outcome = recover_posting_parser.add_mutually_exclusive_group(required=True)
     recovery_outcome.add_argument("--posted-reply-url")
     recovery_outcome.add_argument("--no-reply-posted", action="store_true")
     recover_posting_parser.add_argument("--dry-run", action="store_true")

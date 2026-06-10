@@ -103,9 +103,7 @@ def parse_review_item_metadata(
 
     missing = [key for key in required_keys if not metadata_value_present(metadata.get(key))]
     if missing:
-        raise ValueError(
-            f"Review item file is missing required metadata: {', '.join(missing)}"
-        )
+        raise ValueError(f"Review item file is missing required metadata: {', '.join(missing)}")
 
     return metadata
 
@@ -164,11 +162,7 @@ def resolved_thread_from_response(response: dict[str, Any]) -> dict[str, Any]:
             f"{json.dumps(errors, indent=2)}"
         )
 
-    thread = (
-        response.get("data", {})
-        .get("resolveReviewThread", {})
-        .get("thread")
-    )
+    thread = response.get("data", {}).get("resolveReviewThread", {}).get("thread")
     if not isinstance(thread, dict):
         raise RuntimeError(
             "GitHub GraphQL resolve response did not include a thread:\n"
@@ -177,8 +171,7 @@ def resolved_thread_from_response(response: dict[str, Any]) -> dict[str, Any]:
 
     if thread.get("isResolved") is not True:
         raise RuntimeError(
-            "GitHub GraphQL did not mark the thread resolved:\n"
-            f"{json.dumps(thread, indent=2)}"
+            f"GitHub GraphQL did not mark the thread resolved:\n{json.dumps(thread, indent=2)}"
         )
 
     return thread
