@@ -74,7 +74,8 @@ Useful flags: `--sandbox read-only|workspace-write|danger-full-access`,
 
 Use `claude -p` for one-shot non-interactive runs. By default it loads normal
 Claude Code context; add `--bare` for deterministic scripts that should skip
-auto-discovery of CLAUDE.md, hooks, skills, plugins, MCP, and auto memory.
+auto-discovery of CLAUDE.md, hooks, skill/plugin discovery, MCP, and auto memory.
+Explicit flags and `/skill-name` still work.
 Bare mode also skips OAuth/keychain auth; pass explicit provider auth such as
 `ANTHROPIC_API_KEY` or `apiKeyHelper`.
 
