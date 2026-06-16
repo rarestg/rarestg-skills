@@ -54,13 +54,17 @@ tmux new-session -d -s codex-thread -c ~/project \
 while [ "$(tmux display-message -t codex-thread -p '#{pane_dead}')" != "1" ]; do sleep 1; done
 THREAD_ID=$(jq -r 'select(.type=="thread.started") | .thread_id' /tmp/codex-thread.jsonl | tail -1)
 tmux new-session -d -s codex-followup -c ~/project \
-  "codex exec resume --json $THREAD_ID 'Now focus on refresh-token expiry' > /tmp/codex-thread-2.jsonl" \; set remain-on-exit on
+  "codex exec --json --sandbox read-only resume $THREAD_ID 'Now focus on refresh-token expiry' > /tmp/codex-thread-2.jsonl" \; set remain-on-exit on
 ```
 
+Put global flags such as `--json`, `--sandbox`, and `-o` before the `resume`
+subcommand. `-` reads prompts from stdin for both initial and resumed turns; `-o`
+writes the final assistant message while `--json` still streams JSONL to stdout.
+
 Avoid `codex exec resume --last` in agent orchestration; it picks the most
-recent exec thread for the current directory, which is ambiguous with parallel
-agents. Always resume by explicit `THREAD_ID`. `--all` widens lookup across
-directories and is worse for isolation.
+recently active exec thread for the current directory, which is ambiguous with
+parallel agents. Always resume by explicit `THREAD_ID`. `--all` widens lookup
+across directories and is worse for isolation.
 
 Useful flags: `--sandbox read-only|workspace-write|danger-full-access`,
 `--yolo`, `--model`, `--json`, `-o <path>`, `--add-dir <path>`,
