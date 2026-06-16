@@ -36,8 +36,8 @@ Capture output before killing sessions.
 
 ## Codex CLI
 
-Use `codex exec` for one-shot work. It requires a git repo unless
-`--skip-git-repo-check` is passed.
+Use `codex exec` for one-message/one-response work. It requires a git repo
+unless `--skip-git-repo-check` is passed.
 
 ```bash
 # Review/research, no writes
@@ -46,16 +46,25 @@ tmux new-session -d -s codex-review -c ~/project \
 
 # Build/fix with workspace writes
 tmux new-session -d -s codex-fix -c ~/project \
-  "codex exec --full-auto 'Fix the failing auth tests'" \; set remain-on-exit on
+  "codex exec --sandbox workspace-write 'Fix the failing auth tests'" \; set remain-on-exit on
 
-# Resume the same exec thread explicitly
+# Capture thread ID from JSON, then resume that exact thread one turn at a time
+tmux new-session -d -s codex-thread -c ~/project \
+  "codex exec --json --sandbox read-only 'Review auth token flow' > /tmp/codex-thread.jsonl" \; set remain-on-exit on
+while [ "$(tmux display-message -t codex-thread -p '#{pane_dead}')" != "1" ]; do sleep 1; done
+THREAD_ID=$(jq -r 'select(.type=="thread.started") | .thread_id' /tmp/codex-thread.jsonl | tail -1)
 tmux new-session -d -s codex-followup -c ~/project \
-  "codex exec resume --full-auto SESSION_ID 'Now implement the fix'" \; set remain-on-exit on
+  "codex exec resume --json $THREAD_ID 'Now focus on refresh-token expiry' > /tmp/codex-thread-2.jsonl" \; set remain-on-exit on
 ```
 
-Useful flags: `--full-auto`, `--sandbox read-only|workspace-write|danger-full-access`,
+Avoid `codex exec resume --last` in agent orchestration; it picks the most
+recent exec thread for the current directory, which is ambiguous with parallel
+agents. Always resume by explicit `THREAD_ID`. `--all` widens lookup across
+directories and is worse for isolation.
+
+Useful flags: `--sandbox read-only|workspace-write|danger-full-access`,
 `--yolo`, `--model`, `--json`, `-o <path>`, `--add-dir <path>`,
-`--output-schema <path>`.
+`--output-schema <path>`, `--skip-git-repo-check`.
 
 ## Claude Code
 
