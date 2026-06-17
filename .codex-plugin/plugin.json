@@ -1,0 +1,30 @@
+{
+  "name": "rarestg-skills",
+  "version": "1.1.0",
+  "description": "A bundled set of reusable coding-agent workflow skills for Codex.",
+  "repository": "https://github.com/rarestg/rarestg-skills",
+  "keywords": [
+    "codex",
+    "skills",
+    "coding-agent",
+    "code-review",
+    "developer-productivity"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "RarestG Skills",
+    "shortDescription": "Reusable coding-agent workflow skills.",
+    "longDescription": "Installs a bundle of skills for repo instructions, browser workflows, code quality, coding agents, delegated delivery, execution planning, GitHub review workflows, architecture review, stack merging, skill review, stacked diffs, and task organization.",
+    "developerName": "rarestg",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Use RarestG Skills to review this PR.",
+      "Use RarestG Skills to make an execution plan.",
+      "Use RarestG Skills to improve this repo's coding-agent instructions."
+    ]
+  }
+}
