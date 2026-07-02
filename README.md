@@ -33,7 +33,7 @@ npm run check
 | [merge-stack](skills/merge-stack/)                                   | Merge a linear stack of GitHub PRs into main one by one                                                                                   |
 | [skill-review](skills/skill-review/)                                 | Review a skill for quality, portability, completeness, and correctness                                                                    |
 | [make-a-new-skill](skills/make-a-new-skill/)                         | Create or update a concise agent skill from a workflow, SOP, or repeated task                                                             |
-| [coding-agent](skills/coding-agent/)                                 | Orchestrate Codex CLI and Claude Code as background assistants via tmux                                                                   |
+| [coding-agent](skills/coding-agent/)                                 | Delegate, consult, or review with Codex CLI and Claude Code for research, planning, implementation, or parallel coding-agent work        |
 | [delegated-delivery](skills/delegated-delivery/)                     | Run tickets through a layered main PM -> sub-PM -> worker -> reviewer delivery loop                                                       |
 | [graphify-architecture-review](skills/graphify-architecture-review/) | Use Graphify semantic graphs to analyze architecture and source-validate refactor opportunities                                           |
 | [cf-browser](skills/cf-browser/)                                     | Browse and scrape websites via Cloudflare Browser Rendering API                                                                           |
